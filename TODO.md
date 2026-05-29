@@ -1,0 +1,2 @@
+- Crypto data MVP: use `ccxt` with Coinbase spot hourly OHLCV first. Smoke fetch works for BTC/USD and ETH/USD.
+- Binance public endpoints are blocked without VPN from this location with HTTP 451. With VPN connected to Switzerland, Binance USDT-margined perp OHLCV smoke fetch works for BTC/USDT:USDT and ETH/USDT:USDT.
