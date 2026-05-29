@@ -76,6 +76,15 @@ def test_edgewise_permutation_test_smoke():
     assert np.all((res["pvalues"] >= 0) & (res["pvalues"] <= 1))
 
 
+def test_permutation_and_edgewise_support_lagged_delta_a():
+    targets, lags = _tiny_data()  # d=6, p=1 -> Delta_A is 6x6
+    cfg = FitConfig(p=1, solver="admm", lbfgs_max_iter=2, outer_max_iter=1, seed=0)
+    null = permutation_null_delta_norm(targets, lags, cfg, n_permutations=2, seed=0, block_size=4, delta="A")
+    assert null.shape == (2,) and np.all(np.isfinite(null))
+    res = edgewise_permutation_test(targets, lags, cfg, n_permutations=2, seed=0, block_size=4, delta="A")
+    assert res["pvalues"].shape == (6, 6)
+
+
 def test_stability_selection_and_permutation_null_smoke():
     targets, lags = _tiny_data()
     cfg = FitConfig(p=1, solver="admm", lbfgs_max_iter=2, outer_max_iter=1, seed=0)

@@ -41,14 +41,20 @@ The dated log below is the full chronological history._
 - **Time-resolved viz** (`explore_viz.py`): persistence heatmap + per-block edges
   (`outputs/figures/`).
 
-## Next — toward "finished" + LaTeX
-1. **Broaden the synthetic benchmark** to make the recovery win maximally
-   defensible: more samples (larger n), change-edge counts incl. a 0-change null
-   control, more seeds (tight CIs), ν∈{3,5,∞}. (Open: also vary #regimes K — the
-   exact-prox closed form is currently K=2 only, so K>2 needs a solver extension.)
-2. **(Optional rigor)** λ via BIC, γ via held-out LL.
-3. **LaTeX writeup** (NeurIPS, ≤8pp): method + synthetic benchmark (slide-1) +
-   real-data application reporting the honest controlled null + ablations + limits.
+## Done since (2026-05-29)
+- **Broadened synthetic sweep** (`run_synthetic_sweep.py`, 12 seeds): FR-tDBN beats
+  DYNOTEARS-equiv by +0.19–0.31 change-W AUROC across change-edges/n/ν.
+- **Lag-order**: p=1 justified; lags 2–6 negligible; hourly structure is
+  contemporaneous (`run_lag_selection.py`).
+- **Lagged event analysis** (`run_lagged_analysis.py`): Δ_A null too (edge-wise
+  6<26, BH 0); lag-1 lead-lag persistence figure. Neither W nor A changes around
+  events beyond a vol-matched null.
+
+## Next
+1. **(Optional rigor)** λ via BIC, γ via held-out LL; rank-transform robustness col.
+2. **LaTeX writeup** (NeurIPS, ≤8pp): method (exact-prox fused Student-t DBN) +
+   synthetic recovery (slide-1) + real-data: contemporaneous-dominance, OOS DAG
+   gate, and the honest controlled null (W and A) + ablations + limits.
 
 ## Guiding MVP
 

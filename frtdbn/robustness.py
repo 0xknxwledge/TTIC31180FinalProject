@@ -178,8 +178,10 @@ def _permuted_deltas(
     volatility_match: bool,
     n_vol_bins: int,
     block_size: int | None,
+    delta: str = "W",
 ) -> list[np.ndarray]:
-    """Fit Delta_W under `n_permutations` vol/block-matched regime-label shuffles."""
+    """Fit the change graph (`delta`='W' contemporaneous or 'A' lagged) under
+    `n_permutations` vol/block-matched regime-label shuffles."""
 
     if len(targets_by_regime) != 2:
         raise NotImplementedError("Permutation null currently supports K=2.")
@@ -197,7 +199,7 @@ def _permuted_deltas(
         perm_targets = [targets_all[perm == k] for k in (0, 1)]
         perm_lags = [[lag_mat[perm == k] for lag_mat in lags_all] for k in (0, 1)]
         fit = fit_fr_tdbn(perm_targets, perm_lags, replace(config, seed=int(rng.integers(0, 1_000_000))))
-        deltas.append(np.asarray(fit.Delta_W).copy())
+        deltas.append(np.asarray(fit.Delta_W if delta == "W" else fit.Delta_A).copy())
     return deltas
 
 
@@ -210,11 +212,12 @@ def permutation_null_delta_norm(
     volatility_match: bool = True,
     n_vol_bins: int = 5,
     block_size: int | None = None,
+    delta: str = "W",
 ) -> np.ndarray:
-    """Permutation null for ||Delta_W||_1 with optional block/volatility matching."""
+    """Permutation null for ||Delta||_1 (delta='W' or 'A') with block/vol matching."""
 
     deltas = _permuted_deltas(targets_by_regime, lags_by_regime, config, n_permutations,
-                              seed, volatility_match, n_vol_bins, block_size)
+                              seed, volatility_match, n_vol_bins, block_size, delta)
     return np.asarray([float(np.sum(np.abs(d))) for d in deltas], dtype=float)
 
 
@@ -254,14 +257,15 @@ def edgewise_permutation_test(
     volatility_match: bool = True,
     n_vol_bins: int = 5,
     block_size: int | None = None,
+    delta: str = "W",
 ) -> dict[str, np.ndarray]:
-    """Per-edge permutation test of Delta_W: which edges change beyond a matched null.
-
-    Far more powerful than the global ||Delta||_1 norm — it asks *where* the
-    structure changes, not just by how much in aggregate.
+    """Per-edge permutation test of the change graph (delta='W' or 'A'): which
+    edges change beyond a matched null. More powerful than the global norm.
     """
 
-    observed = np.abs(np.asarray(fit_fr_tdbn(targets_by_regime, lags_by_regime, config).Delta_W))
+    fit = fit_fr_tdbn(targets_by_regime, lags_by_regime, config)
+    observed = np.abs(np.asarray(fit.Delta_W if delta == "W" else fit.Delta_A))
     perm_abs = [np.abs(d) for d in _permuted_deltas(
-        targets_by_regime, lags_by_regime, config, n_permutations, seed, volatility_match, n_vol_bins, block_size)]
+        targets_by_regime, lags_by_regime, config, n_permutations, seed,
+        volatility_match, n_vol_bins, block_size, delta)]
     return {"observed_abs": observed, "pvalues": edgewise_pvalues(observed, perm_abs)}

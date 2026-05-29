@@ -120,6 +120,20 @@ Figures: `outputs/figures/{regime_heatmaps,change_network,structure_over_time}.p
 (`scripts/make_figures.py`). Reproduce via `scripts/run_real_panel.py` and
 `scripts/run_real_robustness.py`.
 
+### Lagged structure & lag order (2026-05-29, `scripts/run_lag_selection.py`, `run_lagged_analysis.py`)
+
+All models use **p=1** (1-hour lag), and that is justified: OOS NLL is flat across
+p∈{1..6} (range 0.2%, non-monotone) and lags ≥2 carry negligible weight
+(‖A_ℓ‖₁≈0.01 vs ‖A_1‖≈0.76 vs ‖W‖≈14.8). **The hourly cross-asset dependency is
+overwhelmingly contemporaneous**; lead-lag is ~20× weaker and 2–6h lead-lag ≈ 0
+(real lead-lag lives at minutes, which this 2-year hourly panel can't resolve).
+The lag-1 lead-lag graph has a few sensible persistent edges (SPY→VIX, MSTR→BTC,
+rates→JPY; `outputs/figures/lagged_a_persistence.png`). **Event change in the
+lagged structure is also null** — edge-wise Δ_A: 6 edges p<0.05 vs ~26 by chance,
+0 survive BH; global ‖Δ_A‖₁ p=0.095 is an artifact (the 104-row event regime
+can't estimate the tiny lead-lag, so A_event≈0 and Δ_A≈−A_ordinary). So **neither
+W nor A reorganizes around events beyond a vol-matched null.**
+
 ### Broadened synthetic sweep (2026-05-29, 12 seeds, `scripts/run_synthetic_sweep.py`)
 
 FR-tDBN (admm + Student-t + fused) vs the DYNOTEARS-equivalent (smooth-L1 +
