@@ -1,15 +1,31 @@
-# Next Steps Plan
+# Project Status & Next Steps
 
-## Current State
+_Updated 2026-05-29. Method math in `PROPOSAL_v2.md`, pre-implementation review in
+`DESIGN_DECISIONS.md`, ADMM spec in `docs/superpowers/specs/`, code map in `README.md`.
+The dated log below is the full chronological history._
 
-- Fixed-`nu` fused-regime Student-t DBN MVP exists in `frtdbn/model.py`.
-- Synthetic two-regime data generator exists in `frtdbn/synthetic.py`.
-- Smoke tests pass with `python -m pytest tests -q`.
-- Synthetic smoke script runs end-to-end.
-- Crypto data path works through `ccxt`.
-- Coinbase spot hourly OHLCV smoke fetch works for `BTC/USD` and `ETH/USD`.
-- Binance public endpoints are blocked without VPN from this location with HTTP 451.
-- With VPN connected to Switzerland, Binance USDT-margined perp OHLCV smoke fetch works for `BTC/USDT:USDT` and `ETH/USDT:USDT`.
+## Current state
+
+- **Methods (validated).** FR-tDBN with two solvers — smooth-L1 baseline and the
+  headline **consensus-ADMM exact-prox** solver — plus Gaussian/Student-t loss and
+  uniform/adaptive fusion. Var-sortability-honest synthetic benchmark
+  (solver × loss × fusion grid, mean ± se). Headline: exact-prox ADMM ≫ smooth-L1;
+  Student-t helps; fusion helps the weaker estimator; adaptive fusion (Option D) is
+  a documented **negative** ablation.
+- **Robustness/eval (done).** Out-of-sample `W≡0` ablation (`svar_vs_dag_oos`),
+  full-density NLLs, time-ordered split, block-bootstrap stability selection,
+  volatility-matched permutation null, restart stability, rolling past-only z-scores.
+- **Data (in progress).** Stooq hourly loader + coverage audit. Constraints found:
+  usable history **~2y (2024-05 → 2026-05)**, timestamps **not ET** (≈ CET/UTC),
+  `^vix` missing.
+- **62 tests pass.** Core formulation unchanged since the ADMM solver.
+
+## Next
+1. **Source hourly VIX** — trying Yahoo Finance; regroup if it fails.
+2. Build the crypto-macro panel loader: Stooq → tz-resolved hourly grid → log
+   returns → rolling z-score → event-CSV regime labels; `d≈12–15` from the audit.
+3. Run the OOS `W≡0` pre-check on the first real panel.
+4. Real-data eval via stability selection + permutation null (≥ 20 perms).
 
 ## Guiding MVP
 

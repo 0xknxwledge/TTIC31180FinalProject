@@ -10,7 +10,7 @@ design spec is `docs/superpowers/specs/2026-05-28-admm-fused-fr-tdbn-design.md`.
 
 ---
 
-## 0. Project status & results (updated 2026-05-28)
+## 0. Project status & results (updated 2026-05-29)
 
 ### Goals
 
@@ -36,7 +36,18 @@ design spec is `docs/superpowers/specs/2026-05-28-admm-fused-fr-tdbn-design.md`.
   metrics,benchmark}.py`): realistic sparse `Δ` (additions/removals/reweights),
   per-regime standardization, imbalanced regime sizes, and a
   solver × loss × fusion grid with change-edge AUROC and mean ± se.
-- **42 tests pass** (`python -m pytest tests -q`).
+- **Robustness & evaluation infrastructure** (`frtdbn/{evaluation,robustness,
+  splitting}.py`): full-density NLLs; time-ordered train/test split; an
+  **out-of-sample `W≡0` SVAR ablation** (`svar_vs_dag_oos`); block-bootstrap
+  stability selection; volatility-matched permutation null; restart stability;
+  rolling past-only z-scores + rank-Gaussianize for real data.
+- **Data coverage audit** (`frtdbn/data.py` + `scripts/audit_data_coverage.py`):
+  Stooq hourly loader/auditor. Finding: usable hourly history is **~2 years
+  (2024-05 → 2026-05)**, not 5, and Stooq timestamps are **not ET** (≈ CET/UTC) —
+  both must shape the real panel. `^vix` absent (needs a proxy / different source).
+- **62 tests pass** (`python -m pytest tests -q`). The core formulation (§2) is
+  unchanged since the ADMM solver landed; this round added evaluation/robustness
+  methodology and the data audit, not new model results.
 
 ### Headline results (synthetic, change-`W` AUROC, mean (se) over 24 fits/cell, standardized so var-sortability = 0.50)
 
