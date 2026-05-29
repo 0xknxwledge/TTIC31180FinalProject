@@ -1,0 +1,20 @@
+# Secrets — never commit real keys
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Build
+.dist/
+
+# Data caches (regenerable via scripts/)
+data/raw/
+
+# Scratch benchmark outputs; committed results are outputs/headline_*.csv
+outputs/*.csv
+!outputs/headline_*.csv

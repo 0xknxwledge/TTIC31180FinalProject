@@ -117,6 +117,96 @@ def prepare_lagged_design(x: np.ndarray, p: int) -> tuple[np.ndarray, list[np.nd
     return target, lags
 
 
+def _max_stable_step(
+    W0: np.ndarray,
+    A0: list[np.ndarray],
+    dW: np.ndarray,
+    dA: list[np.ndarray],
+    max_radius: float,
+) -> float:
+    """Largest step in (0, 1] applying the sparse delta while staying stable.
+
+    A single scalar is applied to the whole delta, so the change support (and
+    thus the ground-truth Delta) stays exactly the sampled sparse set — no
+    global rescale that would contaminate unchanged edges. Smaller steps are
+    monotonically more stable (they shrink toward the stable base), so the first
+    stable step on a descending grid is the largest admissible one.
+    """
+
+    for step in (1.0, 0.8, 0.6, 0.4, 0.25, 0.15, 0.1, 0.05):
+        W1 = W0 + step * dW
+        A1 = [a0 + step * da for a0, da in zip(A0, dA)]
+        if _companion_radius(_reduced_form_coefficients(W1, A1)) <= max_radius:
+            return step
+    return 0.05
+
+
+def _sample_change_delta(
+    W0: np.ndarray,
+    A0: list[np.ndarray],
+    macro: np.ndarray,
+    crypto: np.ndarray,
+    base_mask: np.ndarray,
+    rng: np.random.Generator,
+    n_changes: int,
+    change_types: tuple[str, ...],
+) -> tuple[np.ndarray, list[np.ndarray]]:
+    """Sample a sparse intra/inter-slice delta concentrated in macro->crypto.
+
+    Supports additions (new edges), removals (zeroing existing edges), and
+    reweights (new weight, possibly sign-flipped) of existing edges. Additions
+    keep `i < j` so the event graph remains acyclic.
+    """
+
+    d = W0.shape[0]
+    p = len(A0)
+    dW = np.zeros((d, d))
+    dA = [np.zeros((d, d)) for _ in range(p)]
+
+    def _block_then_global(in_block_pred, global_pred) -> list[tuple[int, int]]:
+        block = [(int(i), int(j)) for i in macro for j in crypto if i < j and in_block_pred(i, j)]
+        if len(block) >= n_changes:
+            rng.shuffle(block)
+            return block
+        glob = [(i, j) for i in range(d) for j in range(i + 1, d) if global_pred(i, j)]
+        merged = list(dict.fromkeys(block + glob))
+        rng.shuffle(merged)
+        return merged
+
+    adds = _block_then_global(lambda i, j: not base_mask[i, j], lambda i, j: not base_mask[i, j])
+    edges = _block_then_global(lambda i, j: base_mask[i, j], lambda i, j: base_mask[i, j])
+    add_ptr = edge_ptr = 0
+
+    for idx in range(n_changes):
+        ctype = change_types[idx % len(change_types)]
+        if ctype == "add" and add_ptr < len(adds):
+            i, j = adds[add_ptr]
+            add_ptr += 1
+            dW[i, j] = rng.choice([-1.0, 1.0]) * rng.uniform(0.35, 0.9)
+        elif ctype == "remove" and edge_ptr < len(edges):
+            i, j = edges[edge_ptr]
+            edge_ptr += 1
+            dW[i, j] = -W0[i, j]
+        elif ctype == "reweight" and edge_ptr < len(edges):
+            i, j = edges[edge_ptr]
+            edge_ptr += 1
+            new_weight = rng.choice([-1.0, 1.0]) * rng.uniform(0.35, 0.9)
+            dW[i, j] = new_weight - W0[i, j]
+        elif add_ptr < len(adds):  # fall back to an addition if the type ran out
+            i, j = adds[add_ptr]
+            add_ptr += 1
+            dW[i, j] = rng.choice([-1.0, 1.0]) * rng.uniform(0.35, 0.9)
+
+    a_candidates = [(int(i), int(j)) for i in macro for j in crypto] or [(0, 1)]
+    rng.shuffle(a_candidates)
+    for k in range(min(max(1, n_changes // 2), len(a_candidates))):
+        i, j = a_candidates[k]
+        lag = int(rng.integers(0, p))
+        dA[lag][i, j] += rng.choice([-1.0, 1.0]) * rng.uniform(0.1, 0.25)
+
+    return dW, dA
+
+
 def make_regime_pair(
     d: int = 20,
     p: int = 1,
@@ -125,8 +215,22 @@ def make_regime_pair(
     change_edges: int = 4,
     nu: float = 5.0,
     seed: int = 0,
+    change_types: tuple[str, ...] = ("add", "remove", "reweight"),
+    max_radius: float = 0.9,
+    tol: float = 1e-8,
+    n_event: int | None = None,
 ) -> SyntheticDBN:
-    """Create two related regimes with sparse regime-specific edge changes."""
+    """Create two related regimes whose Delta is a sparse, realistic edge change.
+
+    The ordinary system is stabilized once; the event regime applies a sparse
+    delta (additions, removals, reweights) scaled by a single stable step. The
+    change masks are read off the *realized* parameter differences, so they are
+    correct by construction regardless of stabilization.
+
+    `n_per_regime` sets the ordinary-regime sample size; `n_event` (default equal
+    to `n_per_regime`) sets the event regime. The realistic fusion setting is
+    `n_event << n_per_regime`.
+    """
 
     if d < 6:
         raise ValueError("d must be at least 6 so macro/crypto blocks are meaningful.")
@@ -134,36 +238,26 @@ def make_regime_pair(
     macro = np.arange(0, max(2, d // 4))
     crypto = np.arange(max(2, d // 4), max(4, d // 2))
 
-    candidates = [(int(i), int(j)) for i in macro for j in crypto if i < j]
-    rng.shuffle(candidates)
-    protected_list = candidates[:change_edges]
-    protected = set(protected_list)
-
-    base_mask = _make_ordered_er_dag(d, mean_degree, rng, protected_edges=set())
-    event_mask = base_mask.copy()
-    for i, j in protected:
-        event_mask[i, j] = True
-
+    base_mask = _make_ordered_er_dag(d, mean_degree, rng)
     W0 = _signed_uniform(base_mask, rng, 0.25, 0.8)
-    W1 = W0.copy()
-    new_weights = _signed_uniform(event_mask & ~base_mask, rng, 0.35, 0.9)
-    W1 += new_weights
+    A0 = _scale_until_stable(W0, _sample_inter_slice(d, p, mean_degree, rng), max_radius)
 
-    A0 = _scale_until_stable(W0, _sample_inter_slice(d, p, mean_degree, rng))
-    A1 = [a.copy() for a in A0]
-    changed_A = np.zeros((p, d, d), dtype=bool)
-    for lag in range(p):
-        for i, j in protected_list[: max(1, change_edges // 2)]:
-            A1[lag][i, j] += rng.choice([-1.0, 1.0]) * rng.uniform(0.08, 0.2)
-            changed_A[lag, i, j] = True
-    A1 = _scale_until_stable(W1, A1)
+    dW, dA = _sample_change_delta(W0, A0, macro, crypto, base_mask, rng, change_edges, change_types)
+    step = _max_stable_step(W0, A0, dW, dA, max_radius)
+    W1 = W0 + step * dW
+    A1 = [a0 + step * da for a0, da in zip(A0, dA)]
 
+    changed_W = np.abs(W1 - W0) > tol
+    diff_a = np.stack([np.abs(a1 - a0) for a1, a0 in zip(A1, A0)])
+    changed_A = (diff_a > tol).any(axis=0)
+
+    n_event = n_per_regime if n_event is None else n_event
     X0 = simulate_dbn(W0, A0, n=n_per_regime, rng=rng, nu=nu)
-    X1 = simulate_dbn(W1, A1, n=n_per_regime, rng=rng, nu=nu)
+    X1 = simulate_dbn(W1, A1, n=n_event, rng=rng, nu=nu)
     return SyntheticDBN(
         W=[W0, W1],
         A=[A0, A1],
         X=[X0, X1],
-        changed_W=(event_mask != base_mask),
-        changed_A=changed_A.any(axis=0),
+        changed_W=changed_W,
+        changed_A=changed_A,
     )

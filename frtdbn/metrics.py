@@ -26,6 +26,41 @@ def change_scores(W: list[np.ndarray], A: list[np.ndarray] | None = None) -> np.
     return score
 
 
+def var_sortability(X: np.ndarray, W: np.ndarray, tol: float = 1e-9) -> float:
+    """Reisach et al. (2021) var-sortability of data `X` under true DAG `W`.
+
+    `X` is `n x d`; `W[i, j] != 0` encodes a directed edge `i -> j`. Returns the
+    fraction of directed paths (of every length) along which marginal variance
+    increases from parent to child, with ties counted as one half. A value near
+    1.0 means variance order recovers causal order (NOTEARS can cheat); near 0.5
+    means it carries no ordering information (e.g. standardized data).
+    """
+
+    if X.ndim != 2:
+        raise ValueError("X must be a 2D array.")
+    d = W.shape[0]
+    if W.shape != (d, d) or X.shape[1] != d:
+        raise ValueError("W must be d x d and match the number of columns in X.")
+
+    E = (W != 0).astype(float)
+    reachable = E.copy()
+    var = np.var(X, axis=0, keepdims=True)  # (1, d)
+    ratio_base = var / var.T  # ratio_base[i, j] = Var(child j) / Var(parent i)
+
+    n_paths = 0.0
+    n_correct = 0.0
+    for _ in range(max(d - 1, 1)):
+        present = reachable > 0
+        n_paths += float(present.sum())
+        ratio = np.where(present, ratio_base, 0.0)
+        n_correct += float(np.sum(present & (ratio > 1.0 + tol)))
+        n_correct += 0.5 * float(np.sum(present & (ratio <= 1.0 + tol) & (ratio >= 1.0 - tol)))
+        reachable = reachable @ E
+    if n_paths == 0.0:
+        return float("nan")
+    return n_correct / n_paths
+
+
 def auroc_binary(labels: np.ndarray, scores: np.ndarray) -> float:
     """Compute AUROC without requiring sklearn in scripts."""
 
