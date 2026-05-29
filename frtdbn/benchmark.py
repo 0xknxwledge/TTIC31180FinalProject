@@ -40,12 +40,13 @@ def run_one(
     standardize: bool = True,
     lambda_reg: float = 0.03,
     nu: float = 5.0,
+    change_edges: int = 4,
     lbfgs_max_iter: int = 20,
     outer_max_iter: int = 5,
 ) -> dict[str, float | str | bool]:
     """Fit one cell of the benchmark grid and score change-edge recovery."""
 
-    synth = make_regime_pair(d=d, p=p, n_per_regime=n, nu=nu, seed=seed)
+    synth = make_regime_pair(d=d, p=p, n_per_regime=n, nu=nu, seed=seed, change_edges=change_edges)
     varsort_raw = var_sortability(synth.X[0], synth.W[0])
 
     series = [standardize_columns(x) if standardize else x for x in synth.X]
@@ -82,6 +83,7 @@ def run_one(
         "d": int(d),
         "p": int(p),
         "nu": float(nu),
+        "change_edges": int(change_edges),
         "loss": loss,
         "solver": solver,
         "gamma": float(gamma),
@@ -92,6 +94,8 @@ def run_one(
         "varsort_fit": float(varsort_fit),
         "auroc_change_w": float(auroc_binary(synth.changed_W, change_scores(fit.W))),
         "auroc_change_a": float(auroc_binary(synth.changed_A, _lagged_change_score(fit.A, p, d))),
+        "delta_w_l1": float(np.abs(fit.Delta_W).sum()) if fit.Delta_W is not None
+        else float(np.abs(fit.W[1] - fit.W[0]).sum()),
         "max_h": float(fit.history[-1]["max_h"]),
         "seconds": float(seconds),
     }
@@ -157,13 +161,14 @@ def run_grid(
     gammas: tuple[float, ...] = (0.0, 0.04),
     gamma_as: tuple[float, ...] | None = None,
     solvers: tuple[str, ...] = ("lbfgs_smooth", "admm"),
+    change_edges_values: tuple[int, ...] = (4,),
     standardize: bool = True,
     lambda_reg: float = 0.03,
     nu: float = 5.0,
     lbfgs_max_iter: int = 20,
     outer_max_iter: int = 5,
 ) -> list[dict[str, float | str | bool]]:
-    """Run the full {solver} x {loss} x {fusion} grid over the requested n and seeds."""
+    """Run the {solver} x {loss} x {fusion} x {change_edges} grid over n and seeds."""
 
     gamma_as = gammas if gamma_as is None else gamma_as
     rows: list[dict[str, float | str | bool]] = []
@@ -173,21 +178,23 @@ def run_grid(
                 for loss in losses:
                     for gamma in gammas:
                         for gamma_a in gamma_as:
-                            rows.append(
-                                run_one(
-                                    seed=seed,
-                                    n=n,
-                                    d=d,
-                                    p=p,
-                                    loss=loss,
-                                    gamma=gamma,
-                                    gamma_a=gamma_a,
-                                    solver=solver,
-                                    standardize=standardize,
-                                    lambda_reg=lambda_reg,
-                                    nu=nu,
-                                    lbfgs_max_iter=lbfgs_max_iter,
-                                    outer_max_iter=outer_max_iter,
+                            for change_edges in change_edges_values:
+                                rows.append(
+                                    run_one(
+                                        seed=seed,
+                                        n=n,
+                                        d=d,
+                                        p=p,
+                                        loss=loss,
+                                        gamma=gamma,
+                                        gamma_a=gamma_a,
+                                        solver=solver,
+                                        standardize=standardize,
+                                        lambda_reg=lambda_reg,
+                                        nu=nu,
+                                        change_edges=change_edges,
+                                        lbfgs_max_iter=lbfgs_max_iter,
+                                        outer_max_iter=outer_max_iter,
+                                    )
                                 )
-                            )
     return rows

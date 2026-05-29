@@ -48,7 +48,7 @@ python scripts/run_synthetic_benchmark.py --d 12 --n 50 100 --seeds 0 1 2
 python scripts/audit_data_coverage.py --symbols spy qqq tlt ief gld btc.v eth.v
 ```
 
-## Data & secrets (local only, gitignored)
+## Data
 
-- `data/stooq_*` — Stooq hourly dump (re-downloadable; usable span ~2024-05 → 2026-05).
-- `.env` — API keys (`MASSIVE_KEY`, `ALPACA_KEY`); see `.env.example`. Never commit.
+Hourly OHLCV from Yahoo Finance (`scripts/fetch_yahoo_hourly.py`), cached locally
+under `data/raw/` (gitignored; re-downloadable). Usable span ~2024-05 → 2026-05.

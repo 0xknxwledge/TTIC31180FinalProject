@@ -76,6 +76,16 @@ def test_summarize_grid_separates_solver_loss_fusion_cells():
     assert len(keys) == 8
 
 
+def test_run_grid_sweeps_change_edges_and_reports_delta_l1():
+    rows = run_grid(
+        d=8, p=1, n_values=[40], seeds=[0],
+        solvers=("admm",), losses=("student_t",), gammas=(0.04,),
+        change_edges_values=(1, 3), lbfgs_max_iter=8, outer_max_iter=2,
+    )
+    assert {r["change_edges"] for r in rows} == {1, 3}
+    assert all("delta_w_l1" in r and r["delta_w_l1"] >= 0 for r in rows)
+
+
 def test_run_grid_includes_solver_axis():
     rows = run_grid(
         d=8, p=1, n_values=[40], seeds=[0],

@@ -21,3 +21,6 @@ data/raw/yahoo
 # Scratch benchmark outputs; committed results are outputs/headline_*.csv
 outputs/*.csv
 !outputs/headline_*.csv
+
+# Scratch run logs
+outputs/*.txt
