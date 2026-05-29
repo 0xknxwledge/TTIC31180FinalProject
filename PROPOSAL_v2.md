@@ -120,6 +120,16 @@ Figures: `outputs/figures/{regime_heatmaps,change_network,structure_over_time}.p
 (`scripts/make_figures.py`). Reproduce via `scripts/run_real_panel.py` and
 `scripts/run_real_robustness.py`.
 
+### Broadened synthetic sweep (2026-05-29, 12 seeds, `scripts/run_synthetic_sweep.py`)
+
+FR-tDBN (admm + Student-t + fused) vs the DYNOTEARS-equivalent (smooth-L1 +
+Gaussian + independent) on change-W AUROC, swept one axis at a time:
+change-edges 1→5: 0.85–0.99 vs 0.60–0.69 (**+0.25–0.30**); samples 50→200:
+0.82–0.90 vs 0.55–0.61; tail ν 3→30: gap **+0.31 (heavy) → +0.19 (≈Gaussian)** —
+largest under heavy tails, as the Student-t likelihood predicts. change-edges=0 is
+a clean null control (Δ floor ≈ 0.27). Figure:
+`outputs/figures/synthetic_sweep_change_edges.png`.
+
 ### Baselines & sensitivity (2026-05-29)
 
 - **Null is robust** (`scripts/run_sensitivity.py`): no event type (FOMC/CPI/NFP)
