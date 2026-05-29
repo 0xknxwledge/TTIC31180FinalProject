@@ -76,3 +76,20 @@ def rank_gaussianize(x: np.ndarray, eps: float = 1e-6) -> np.ndarray:
         probs = np.clip((ranks - 0.5) / n, eps, 1.0 - eps)
         out[valid, j] = ndtri(probs)
     return out
+
+
+def apply_transform(x: np.ndarray, transform: str = "standardize") -> np.ndarray:
+    """Dispatch a column transform by name (for the benchmark's robustness columns).
+
+    ``"standardize"`` z-scores (flattens the variance gradient), ``"rank"`` maps
+    each column to normal scores (distribution-free / Gaussian-copula), and
+    ``"none"`` is the identity.
+    """
+
+    if transform == "standardize":
+        return standardize_columns(x)
+    if transform == "rank":
+        return rank_gaussianize(x)
+    if transform == "none":
+        return np.asarray(x, dtype=float)
+    raise ValueError(f"Unknown transform {transform!r}.")

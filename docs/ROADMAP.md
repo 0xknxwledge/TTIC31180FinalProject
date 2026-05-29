@@ -33,8 +33,19 @@ where it validates the DAG/heavy-tail modeling but yields a carefully-controlled
 1. **NeurIPS write-up (≤ 8 pp)** — method (`PROPOSAL.md` §1–2 + `admm-spec.md`) +
    synthetic recovery (slide-1) + real-data: contemporaneous-dominance, OOS DAG
    gate, the controlled null (W and A), ablations, limits.
-2. **(Optional rigor)** λ via BIC, γ via held-out LL; a rank-transform
-   (Gaussian-copula) robustness column.
+
+## Rigor add-ons (done 2026-05-29)
+- **Principled (λ, γ) selection** (`frtdbn/selection.py`: held-out NLL + BIC;
+  `scripts/run_selection_robustness.py`). *Synthetic:* held-out LL selects fused
+  (γ>0) in **5/5** seeds (modal λ=0.03, γ=0.02); BIC more conservative (λ=0.1,
+  γ=0 modal). *Real panel:* held-out LL drives **γ→0** (BIC γ=0.02) — data-driven
+  selection finds no change-graph to encode, an orthogonal corroboration of the
+  empirical null.
+- **Rank-transform (Gaussian-copula) robustness column.** FR-tDBN's change-W
+  AUROC advantage over the DYNOTEARS-equivalent is **+0.24 standardized,
+  +0.14 under the rank transform** — shrinks (the transform compresses the heavy
+  tails the Student-t exploits) but remains clearly positive; the win is not a
+  marginal-distribution artifact.
 
 ## Changelog (high level)
 - Method + var-sortability-honest synthetic benchmark; **exact-prox ADMM solver**
@@ -44,3 +55,5 @@ where it validates the DAG/heavy-tail modeling but yields a carefully-controlled
 - Data: pivoted Stooq → **Yahoo** (clean UTC); d=23 panel; verified event calendar.
 - Real-data run → robust empirical **null**; lag-order ⇒ `p=1`; broadened synthetic
   sweep; baselines vs SVAR/DYNOTEARS; time-resolved figures (`outputs/figures/`).
+- Rigor add-ons: held-out-NLL/BIC (λ, γ) selection + rank-transform robustness
+  column (`frtdbn/selection.py`); real-panel held-out drives γ→0 (corroborates the null).

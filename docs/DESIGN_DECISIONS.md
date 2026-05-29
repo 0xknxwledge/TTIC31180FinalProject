@@ -109,3 +109,10 @@ budget; no GPU used.
 - **P2-J event timing** — 08:30-ET CPI/NFP precede the RTH open, so the window captures the post-open reaction (futures not used); FOMC 14:00 ET is mid-session.
 - **P2-K frequency pre-check** — done: the OOS `W≡0` gate shows DAG ≫ SVAR (W carries weight), and lead-lag is negligible beyond 1h ⇒ `p=1`.
 - **P2-L naming** — adopted: "DYNOTEARS-equivalent (our smooth-L1 + Gaussian + independent implementation)."
+
+**Rigor add-ons (2026-05-29):** principled `(λ, γ)` selection (held-out NLL + BIC,
+`frtdbn/selection.py`) replaces the hand-picked penalties — on synthetic ground
+truth held-out LL selects fusion (γ>0) in every seed; on the real panel held-out
+LL drives γ→0, an orthogonal corroboration of the null. A rank-transform
+(Gaussian-copula) robustness column shows the change-W recovery advantage survives
+a distribution-free transform (+0.24 standardized → +0.14 ranked).

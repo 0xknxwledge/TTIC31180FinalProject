@@ -1,6 +1,6 @@
 import numpy as np
 
-from frtdbn.benchmark import run_grid, summarize_grid
+from frtdbn.benchmark import run_grid, run_one, summarize_grid
 
 
 def _tiny_grid():
@@ -94,6 +94,24 @@ def test_run_grid_includes_solver_axis():
     )
     assert {r["solver"] for r in rows} == {"lbfgs_smooth", "admm"}
     assert len(rows) == 2 * 2 * 2 * 2  # solver x loss x gamma_w x gamma_a
+
+
+def test_run_one_supports_rank_transform():
+    row = run_one(
+        seed=0, n=40, d=6, p=1, loss="student_t", gamma=0.04,
+        transform="rank", lbfgs_max_iter=8, outer_max_iter=2,
+    )
+    assert row["transform"] == "rank"
+    assert 0.0 <= row["auroc_change_w"] <= 1.0
+    # Rank-Gaussianizing gives every column an identical marginal -> equal
+    # variances -> var-sortability pinned at 0.5, like standardization.
+    assert abs(row["varsort_fit"] - 0.5) < 1e-6
+
+
+def test_run_one_reports_transform_for_standardize_default():
+    row = run_one(seed=0, n=40, d=6, p=1, loss="gaussian", gamma=0.0,
+                  lbfgs_max_iter=8, outer_max_iter=2)
+    assert row["transform"] == "standardize"
 
 
 def test_standardization_drives_var_sortability_to_one_half():

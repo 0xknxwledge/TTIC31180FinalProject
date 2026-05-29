@@ -1,6 +1,13 @@
 import numpy as np
+import pytest
 
-from frtdbn.preprocess import rank_gaussianize, robust_scales, rolling_zscore_past, standardize_columns
+from frtdbn.preprocess import (
+    apply_transform,
+    rank_gaussianize,
+    robust_scales,
+    rolling_zscore_past,
+    standardize_columns,
+)
 
 
 def test_standardize_columns_yields_zero_mean_unit_variance():
@@ -48,3 +55,23 @@ def test_rank_gaussianize_preserves_order_and_shape():
     z = rank_gaussianize(x)
     assert z.shape == x.shape
     assert list(np.argsort(z[:, 0])) == [1, 2, 0]
+
+
+def test_apply_transform_standardize_matches_standardize_columns():
+    x = np.array([[1.0, 10.0], [2.0, 20.0], [3.0, 30.0]])
+    assert np.allclose(apply_transform(x, "standardize"), standardize_columns(x))
+
+
+def test_apply_transform_rank_matches_rank_gaussianize():
+    x = np.array([[3.0], [1.0], [2.0]])
+    assert np.allclose(apply_transform(x, "rank"), rank_gaussianize(x))
+
+
+def test_apply_transform_none_is_identity():
+    x = np.array([[1.0, 2.0], [3.0, 4.0]])
+    assert np.allclose(apply_transform(x, "none"), x)
+
+
+def test_apply_transform_rejects_unknown_transform():
+    with pytest.raises(ValueError):
+        apply_transform(np.zeros((2, 2)), "bogus")

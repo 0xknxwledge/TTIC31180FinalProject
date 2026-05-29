@@ -16,7 +16,7 @@ import numpy as np
 
 from frtdbn.metrics import auroc_binary, change_scores, var_sortability
 from frtdbn.model import FitConfig, fit_fr_tdbn
-from frtdbn.preprocess import standardize_columns
+from frtdbn.preprocess import apply_transform
 from frtdbn.synthetic import make_regime_pair, prepare_lagged_design
 
 
@@ -38,18 +38,25 @@ def run_one(
     gamma_a: float | None = None,
     solver: str = "lbfgs_smooth",
     standardize: bool = True,
+    transform: str | None = None,
     lambda_reg: float = 0.03,
     nu: float = 5.0,
     change_edges: int = 4,
     lbfgs_max_iter: int = 20,
     outer_max_iter: int = 5,
 ) -> dict[str, float | str | bool]:
-    """Fit one cell of the benchmark grid and score change-edge recovery."""
+    """Fit one cell of the benchmark grid and score change-edge recovery.
+
+    ``transform`` selects the column transform (``"standardize"``, ``"rank"``,
+    ``"none"``); when ``None`` it falls back to the legacy ``standardize`` flag.
+    """
+
+    transform = ("standardize" if standardize else "none") if transform is None else transform
 
     synth = make_regime_pair(d=d, p=p, n_per_regime=n, nu=nu, seed=seed, change_edges=change_edges)
     varsort_raw = var_sortability(synth.X[0], synth.W[0])
 
-    series = [standardize_columns(x) if standardize else x for x in synth.X]
+    series = [apply_transform(x, transform) for x in synth.X]
     varsort_fit = var_sortability(series[0], synth.W[0])
 
     targets, lags = [], []
@@ -90,6 +97,7 @@ def run_one(
         "gamma_w": float(gamma),
         "gamma_a": float(gamma_a),
         "standardize": bool(standardize),
+        "transform": transform,
         "varsort_raw": float(varsort_raw),
         "varsort_fit": float(varsort_fit),
         "auroc_change_w": float(auroc_binary(synth.changed_W, change_scores(fit.W))),
@@ -163,6 +171,7 @@ def run_grid(
     solvers: tuple[str, ...] = ("lbfgs_smooth", "admm"),
     change_edges_values: tuple[int, ...] = (4,),
     standardize: bool = True,
+    transform: str | None = None,
     lambda_reg: float = 0.03,
     nu: float = 5.0,
     lbfgs_max_iter: int = 20,
@@ -190,6 +199,7 @@ def run_grid(
                                         gamma_a=gamma_a,
                                         solver=solver,
                                         standardize=standardize,
+                                        transform=transform,
                                         lambda_reg=lambda_reg,
                                         nu=nu,
                                         change_edges=change_edges,
