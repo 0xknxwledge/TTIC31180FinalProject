@@ -178,6 +178,72 @@ def _as_utc_timestamp(value: str | pd.Timestamp) -> pd.Timestamp:
     return ts.tz_convert("UTC")
 
 
+STOOQ_OUT_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
+
+
+def load_stooq_txt(path: str | Path) -> pd.DataFrame:
+    """Load one Stooq hourly `.txt` file into a tidy OHLCV frame.
+
+    Stooq format: `<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,
+    <OPENINT>`, DATE=YYYYMMDD, TIME=HHMMSS. Timestamps are returned **tz-naive**;
+    the Stooq time zone is not self-describing, so infer it from the hour
+    histogram (see `audit_symbol_coverage`) before aligning to event times.
+    """
+
+    path = Path(path)
+    raw = pd.read_csv(path)
+    if raw.empty:
+        return pd.DataFrame(columns=STOOQ_OUT_COLUMNS)
+    raw.columns = [c.strip("<>").lower() for c in raw.columns]
+    date = raw["date"].astype(int).astype(str)
+    time = raw["time"].astype(int).astype(str).str.zfill(6)
+    ts = pd.to_datetime(date + time, format="%Y%m%d%H%M%S", errors="coerce")
+    out = pd.DataFrame(
+        {
+            "timestamp": ts,
+            "open": raw["open"].astype(float),
+            "high": raw["high"].astype(float),
+            "low": raw["low"].astype(float),
+            "close": raw["close"].astype(float),
+            "volume": raw["vol"].astype(float),
+        }
+    )
+    return out.dropna(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+
+
+def find_stooq_files(root: str | Path, ticker: str) -> list[Path]:
+    """Find Stooq files for a ticker (matches `<ticker>.txt` or `<ticker>.us.txt`)."""
+
+    wanted = {f"{ticker.lower()}.txt", f"{ticker.lower()}.us.txt"}
+    return sorted(p for p in Path(root).rglob("*.txt") if p.name.lower() in wanted)
+
+
+def audit_symbol_coverage(df: pd.DataFrame, symbol: str) -> dict:
+    """Coverage diagnostics for one symbol's hourly frame (tz-agnostic)."""
+
+    if df.empty:
+        return {"symbol": symbol, "n_rows": 0, "first_ts": None, "last_ts": None,
+                "span_days": 0, "n_days": 0, "rows_per_day_median": 0.0,
+                "n_distinct_hours": 0, "hours": [], "close_nulls": 0, "close_nonpositive": 0}
+    ts = df["timestamp"]
+    close = df["close"]
+    days = ts.dt.normalize()
+    hours = sorted(int(h) for h in ts.dt.hour.unique())
+    return {
+        "symbol": symbol,
+        "n_rows": int(len(df)),
+        "first_ts": str(ts.min()),
+        "last_ts": str(ts.max()),
+        "span_days": int((ts.max() - ts.min()).days),
+        "n_days": int(days.nunique()),
+        "rows_per_day_median": float(df.groupby(days).size().median()),
+        "n_distinct_hours": len(hours),
+        "hours": hours,
+        "close_nulls": int(close.isna().sum()),
+        "close_nonpositive": int((close <= 0).sum()),
+    }
+
+
 def close_to_return_panel(frames: Iterable[pd.DataFrame]) -> pd.DataFrame:
     """Convert cached OHLCV frames to a wide hourly log-return panel."""
 

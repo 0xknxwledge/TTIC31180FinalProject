@@ -247,3 +247,116 @@ edge frequencies) over trusting a single fit's support on real data.
 3. **Crypto-macro data pipeline** (Massive/Alpaca, `d≈15–20`) — the empirical half.
 4. Real-data eval leans on **stability selection + permutation null**, not
    single-fit support (per the side finding above).
+
+## Data Pipeline Questions To Resolve Before Planning
+
+The first real analysis panel should be crypto-macro, not crypto-only. Crypto-only
+is still useful as a fetch/model smoke test, but the empirical claim is about
+spillovers linking crypto, equities, rates, FX, and volatility.
+
+Open questions to settle before building the full pipeline:
+
+1. **Near-24h macro coverage.** Which macro instruments are actually available
+   hourly from Massive/Alpaca? CPI/NFP releases occur at 08:30 ET, so cash ETFs
+   only capture post-open reaction.
+2. **Futures vs ETFs.** Do we use index/rate futures to capture premarket macro
+   reactions, or accept an ETF panel whose event window starts at the cash open?
+3. **Continuous futures construction.** If using futures, how do we roll/stitch
+   contracts and avoid artificial return jumps?
+4. **Event calendar source.** Manual CSV vs API/scrape; must include exact UTC
+   timestamps for CPI, NFP, FOMC statement, and possibly FOMC press conference.
+5. **Hourly bar convention.** For an 08:30 ET release, which hourly bar receives
+   the event label, and are returns close-to-close, open-to-close, or event-time
+   aligned?
+6. **Standardization.** Real data should use rolling, past-only z-scores; the
+   synthetic full-sample standardization is only for benchmark fairness.
+7. **Missingness policy.** Drop variables with incomplete history; forward-fill
+   prices only before computing returns; never forward-fill returns.
+8. **First panel size.** Pick `d≈15–20` from actual coverage and data quality
+   before coding the full event-label pipeline.
+9. **Crypto data source.** Binance perps work with Switzerland VPN; decide
+   fallback behavior when VPN/API access fails.
+
+## Robustness Infrastructure Completed
+
+- Fit results now include returned-graph diagnostics:
+  - `h_returned_max`
+  - per-regime `h_returned_k`
+  - `W`/`A` nonzero counts
+  - `Delta_W`/`Delta_A` nonzero counts
+  - final primal/dual residuals when available
+- Added full held-out likelihood evaluation with constants:
+  - Student-t full NLL
+  - Gaussian full NLL
+- Added `W≡0` structural-VAR-only baseline (`fit_svar_only`) for early
+  contemporaneous-DAG sanity checks.
+- Added restart robustness helpers:
+  - multiple random restarts
+  - top-k changed-edge Jaccard stability
+- Added block-bootstrap stability selection helpers for edge-frequency reporting.
+- Added volatility-matched permutation-null helper for `||Delta_W||_1`.
+- Added real-data preprocessing robustness helpers:
+  - rolling past-only z-scores
+  - rank/Gaussian-copula transform
+  - MAD robust scales
+- Benchmark CLI now supports:
+  - multiple `nu` values
+  - multiple `p` values
+  - separate `gamma_w` and `gamma_a`
+
+Validation: `python -m pytest tests -q` passes with 54 tests.
+
+## Update 2026-05-29 — robustness review, OOS fix, and Stooq coverage audit (62 tests)
+
+### Robustness work reviewed — solid; one correctness fix applied
+Verified: full-constant NLLs correct; diagnostics computed on the *returned sparse*
+graph; block bootstrap aligns target+lag rows; vol-matched permutation preserves
+label counts. The team's cautions (single-run smoke; null underpowered, use ≥20–100
+perms; dense support → report frequencies/rankings; tune γ_W/γ_A separately) are all
+valid. **Main gap fixed: the W≡0 / held-out-NLL comparison was in-sample**, which
+favors the DAG mechanically (it has more parameters). Added genuine out-of-sample:
+- `frtdbn/splitting.py`: `train_test_split_regimes` (time-ordered) + `time_block_indices`.
+- `evaluation.heldout_nll` → renamed **`full_nll`**; added **`svar_vs_dag_oos`**
+  (fit FR-tDBN + SVAR on train, compare full NLL on a disjoint test split with
+  train-derived scales). Re-run the W≡0 ablation through this before claiming W helps.
+
+### Coverage audit (first pipeline deliverable) — `scripts/audit_data_coverage.py`
+`frtdbn/data.{load_stooq_txt, find_stooq_files, audit_symbol_coverage}`.
+Candidate-panel result (`outputs/coverage_audit.csv`):
+
+| block | tickers found | span | hours (tz clue) |
+|---|---|---|---|
+| equity ETF | spy qqq iwm | 2024-05-10 → 2026-05-28 | 15–22 |
+| rates ETF | tlt ief shy | same | 15–22 |
+| commodity | gld | same | 15–22 |
+| crypto | btc.v eth.v sol.v | same, 24h | 1–23 |
+| FX | usdeur | same, 24h | 1–23 |
+| rates yield | 10yusy.b 2yusy.b | same | 4–23 |
+| vol | `^vix` **not found** | — | — |
+
+**Two big constraints the audit exposed:**
+1. **Stooq hourly history is ~2 years (2024-05 → 2026-05), not 5.** Revise the
+   window to ~2y (≈24 CPI, 16 FOMC, 24 NFP → ~64 events). Silver lining: much less
+   non-stationarity to worry about. If 5y is required, supplement via Massive/Alpaca.
+2. **Timestamps are NOT ET** — ETF bars at hours 15–22 imply CET/UTC-ish (US RTH
+   in ET would be 9–16). Resolve the tz (likely CET = UTC+1) before mapping the
+   08:30 ET CPI release to a bar. Crypto/FX are 24h (1–23) as expected; closes are
+   clean (0 nonpositive). `^vix` index isn't in the dump — use a VIX ETF proxy
+   (VIXY/UVXY) or find the Stooq code.
+
+### Resolved data-pipeline questions (locked guidance)
+1. Coverage audit first ✓. 2. Futures for event windows, else caveat ETF windows as
+"post-open reaction." 3. Stitch **returns** across futures rolls, not prices.
+4. Hand-curated event CSV in UTC; separate FOMC statement (14:00 ET) / presser
+(14:30 ET). 5. Log returns, close-to-close on a fixed hourly grid, window relative
+to the release timestamp; report ±1/2/4h sensitivity. 6. `rolling_zscore_past`,
+applied before regime split, never per-regime. 7. Drop sparse symbols; ffill
+*prices* over short gaps then compute returns; never ffill returns. 8. d≈12–15 from
+actual coverage. 9. Binance → Coinbase/Alpaca fallback, log source per symbol.
+**(+) Split:** train 2024-05→2025-12, test 2026-01→2026-05 (time-ordered ~80/20).
+**(+) Non-stationarity:** report per-sub-period Δ stability via `time_block_indices`.
+
+### Next
+- Re-run W≡0 ablation via `svar_vs_dag_oos` on the first real panel (early sanity).
+- Build the panel loader: Stooq → tz-resolved hourly grid → log returns → rolling
+  z-score → regime labels from the event CSV; pick d≈12–15 from the audit.

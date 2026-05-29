@@ -247,11 +247,16 @@ late-listing alts like ARB/SUI/WIF) is a stretch only after the small panel work
 
 ### 4.3 History and events
 
-Window 2021-01-01 → 2026-05-01; ≈ 65 CPI, 40 FOMC, 60 NFP. With ±2h hourly windows
-the event regime is a few hundred observations — i.e. `n_event ≪ n_ordinary`,
-exactly the borrow-strength regime the fusion penalty targets. Acknowledged risk:
-5-year "ordinary" non-stationarity (2021 bull → 2022 crash → 2023–24 → 2025–26)
-can confound the event/ordinary contrast; consider a time-block control.
+A coverage audit of the local Stooq hourly dump (`scripts/audit_data_coverage.py`)
+shows usable history of **~2 years (2024-05 → 2026-05)** for the candidate panel —
+not the 5 years originally planned (free Stooq hourly is short). That window holds
+≈ 24 CPI, 16 FOMC, 24 NFP (~64 events); with ±2h hourly windows the event regime is
+a few hundred observations — `n_event ≪ n_ordinary`, the borrow-strength regime the
+fusion penalty targets. A 2-year window also *reduces* the non-stationarity risk; we
+still report per-sub-period Δ stability (`time_block_indices`). For a 5-year version,
+supplement Stooq with Massive/Alpaca. **Timezone:** Stooq timestamps are not ET (ETF
+bars fall at hours 15–22, consistent with CET/UTC), so the tz must be resolved before
+aligning the 08:30-ET releases.
 
 ### 4.4 Acyclicity sanity check
 
@@ -261,16 +266,24 @@ honestly. Worth running early on a tiny panel before committing the pipeline.
 
 ## 5. Real-data evaluation (forward plan)
 
-No ground-truth DAG, so:
-- **Held-out Student-t log-likelihood** on 2025 data (use the *full* density,
-  including the `Γ` / `½log(νπ)` constants, for valid t-vs-Gaussian comparison).
-- **Stability selection** via block bootstrap (preserve time order); report `Δ`
-  edge frequencies; headline findings = edges surviving > 70%. This is the
-  reliable lens given the §0 finding that single-fit support is hard at small
-  event-`n`.
-- **Permutation null on regime labels**, block- and volatility-matched (event
-  windows are mechanically high-volatility, so a naive relabel rejects trivially);
-  null distribution for `‖Δ‖₁`.
+No ground-truth DAG, so (helpers in `frtdbn/{evaluation,robustness,splitting}.py`):
+- **Time-ordered train/test split** (`train_test_split_regimes`): train
+  2024-05→2025-12, test 2026-01→2026-05 (~80/20). All held-out numbers use the
+  test split with **train-derived** scales (no leakage).
+- **Out-of-sample full-density NLL** (`full_nll`, with the `Γ` / `½log(νπ)`
+  constants) for valid t-vs-Gaussian and FR-tDBN-vs-`W≡0` comparison. The `W≡0`
+  SVAR ablation runs through `svar_vs_dag_oos` — only an *out-of-sample* win
+  counts as evidence the contemporaneous DAG carries weight (an in-sample
+  comparison favors the DAG mechanically, since it has strictly more parameters).
+- **Stability selection** via block bootstrap (`stability_selection`); report `Δ`
+  edge frequencies; headline = edges surviving > 70%. This is the reliable lens
+  given the §0 finding that single-fit support is hard at small event-`n`.
+- **Permutation null on regime labels** (`permutation_null_delta_norm`), block-
+  and volatility-matched (event windows are mechanically high-volatility, so a
+  naive relabel rejects trivially); ≥ 20 (ideally 100) permutations for usable
+  p-value resolution.
+- **Restart stability** (`fit_restarts` / top-k Δ Jaccard) and per-sub-period Δ
+  stability (`time_block_indices`).
 - **Community shift** (Louvain on `|W^k|`) and the optional **HRP** figure remain
   secondary / dessert.
 

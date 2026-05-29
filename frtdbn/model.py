@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
+from frtdbn.metrics import graph_diagnostics
 from frtdbn.prox import fused_lasso_prox_pair
 
 
@@ -43,6 +44,7 @@ class FitResult:
     history: list[dict[str, float]] = field(default_factory=list)
     Delta_W: np.ndarray | None = None
     Delta_A: np.ndarray | None = None
+    diagnostics: dict[str, float] = field(default_factory=dict)
 
 
 def _as_tensor_list(values: list[np.ndarray], dtype: torch.dtype) -> list[torch.Tensor]:
@@ -221,7 +223,7 @@ def fit_fr_tdbn(
         A_final = A_param.detach().cpu().numpy()
     W_out = [W_final[k].copy() for k in range(K)]
     A_out = [A_final[k].reshape(config.p * d, d).copy() for k in range(K)]
-    return FitResult(W=W_out, A=A_out, history=history)
+    return _make_result(W_out, A_out, history)
 
 
 def _adaptive_weights(delta: np.ndarray, gamma0: float, eps: float) -> np.ndarray:
@@ -237,6 +239,24 @@ def _adaptive_weights(delta: np.ndarray, gamma0: float, eps: float) -> np.ndarra
 def _gamma_for_lag(gamma_a, lag: int, rho: float):
     g = np.asarray(gamma_a)
     return (g if g.ndim == 0 else g[lag]) / rho
+
+
+def _make_result(W_out: list[np.ndarray], A_out: list[np.ndarray], history: list[dict[str, float]]) -> FitResult:
+    Delta_W = (W_out[1] - W_out[0]).copy() if len(W_out) >= 2 else None
+    Delta_A = (A_out[1] - A_out[0]).copy() if len(A_out) >= 2 else None
+    diagnostics = graph_diagnostics(W_out, A_out)
+    if history:
+        diagnostics["theta_h_logged_last"] = float(history[-1].get("max_h", np.nan))
+        diagnostics["primal_res_last"] = float(history[-1].get("primal_res", np.nan))
+        diagnostics["dual_res_last"] = float(history[-1].get("dual_res", np.nan))
+    return FitResult(
+        W=W_out,
+        A=A_out,
+        history=history,
+        Delta_W=Delta_W,
+        Delta_A=Delta_A,
+        diagnostics=diagnostics,
+    )
 
 
 def _run_admm(
@@ -401,6 +421,4 @@ def _fit_admm(
     p = config.p
     W_out = [Vw[k].copy() for k in range(K)]
     A_out = [Va[k].reshape(p * d, d).copy() for k in range(K)]
-    Delta_W = (Vw[1] - Vw[0]).copy()
-    Delta_A = (Va[1] - Va[0]).reshape(p * d, d).copy()
-    return FitResult(W=W_out, A=A_out, history=history, Delta_W=Delta_W, Delta_A=Delta_A)
+    return _make_result(W_out, A_out, history)

@@ -19,13 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from frtdbn.benchmark import run_grid, summarize_grid
 
 COLUMNS = [
-    "seed", "n", "d", "p", "loss", "solver", "gamma", "standardize",
+    "seed", "n", "d", "p", "nu", "loss", "solver", "gamma", "gamma_w", "gamma_a", "standardize",
     "varsort_raw", "varsort_fit", "auroc_change_w", "auroc_change_a",
     "max_h", "seconds",
 ]
 
 SUMMARY_COLUMNS = [
-    "solver", "loss", "fusion", "n_fits",
+    "p", "nu", "solver", "loss", "fusion", "gamma_w", "gamma_a", "n_fits",
     "auroc_w_mean", "auroc_w_se", "auroc_a_mean", "auroc_a_se",
     "max_h_mean", "seconds_mean",
 ]
@@ -38,11 +38,11 @@ def _print_summary(rows: list[dict]) -> list[dict]:
         max((c["n_fits"] for c in summarize_grid(rows)), default=0),
     ))
     summary = summarize_grid(rows)
-    summary.sort(key=lambda c: (c["solver"], c["loss"], c["fusion"]))
-    print(f"{'solver':<14}{'loss':<11}{'fusion':<9}{'AUROC W (se)':<18}{'AUROC A (se)':<18}{'max_h':<11}{'sec/fit':<8}")
+    summary.sort(key=lambda c: (c["p"], c["nu"], c["solver"], c["loss"], c["fusion"], c["gamma_w"], c["gamma_a"]))
+    print(f"{'p':<4}{'nu':<7}{'solver':<14}{'loss':<11}{'fusion':<9}{'gW':<7}{'gA':<7}{'AUROC W (se)':<18}{'AUROC A (se)':<18}{'max_h':<11}{'sec/fit':<8}")
     for c in summary:
-        print("{:<14}{:<11}{:<9}{:<18}{:<18}{:<11.2e}{:<8.2f}".format(
-            c["solver"], c["loss"], c["fusion"],
+        print("{:<4}{:<7.3g}{:<14}{:<11}{:<9}{:<7.3g}{:<7.3g}{:<18}{:<18}{:<11.2e}{:<8.2f}".format(
+            c["p"], c["nu"], c["solver"], c["loss"], c["fusion"], c["gamma_w"], c["gamma_a"],
             f"{c['auroc_w_mean']:.3f} ({c['auroc_w_se']:.3f})",
             f"{c['auroc_a_mean']:.3f} ({c['auroc_a_se']:.3f})",
             c["max_h_mean"], c["seconds_mean"],
@@ -53,30 +53,37 @@ def _print_summary(rows: list[dict]) -> list[dict]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--d", type=int, default=12)
-    parser.add_argument("--p", type=int, default=1)
+    parser.add_argument("--p", type=int, nargs="+", default=[1])
     parser.add_argument("--n", type=int, nargs="+", default=[50, 100])
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
-    parser.add_argument("--nu", type=float, default=5.0)
+    parser.add_argument("--nu", type=float, nargs="+", default=[5.0])
     parser.add_argument("--lambda-reg", type=float, default=0.03)
     parser.add_argument("--gamma", type=float, default=0.04)
+    parser.add_argument("--gamma-a", type=float, default=None)
     parser.add_argument("--max-iter", type=int, default=20)
     parser.add_argument("--outer-iter", type=int, default=5)
     parser.add_argument("--no-standardize", action="store_true")
     parser.add_argument("--output", default="outputs/synthetic_benchmark.csv")
     args = parser.parse_args()
 
-    rows = run_grid(
-        d=args.d,
-        p=args.p,
-        n_values=args.n,
-        seeds=args.seeds,
-        gammas=(0.0, args.gamma),
-        standardize=not args.no_standardize,
-        lambda_reg=args.lambda_reg,
-        nu=args.nu,
-        lbfgs_max_iter=args.max_iter,
-        outer_max_iter=args.outer_iter,
-    )
+    rows = []
+    for p in args.p:
+        for nu in args.nu:
+            rows.extend(
+                run_grid(
+                    d=args.d,
+                    p=p,
+                    n_values=args.n,
+                    seeds=args.seeds,
+                    gammas=(0.0, args.gamma),
+                    gamma_as=(0.0, args.gamma if args.gamma_a is None else args.gamma_a),
+                    standardize=not args.no_standardize,
+                    lambda_reg=args.lambda_reg,
+                    nu=nu,
+                    lbfgs_max_iter=args.max_iter,
+                    outer_max_iter=args.outer_iter,
+                )
+            )
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)

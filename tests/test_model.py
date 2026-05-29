@@ -30,6 +30,8 @@ def test_fit_accepts_gaussian_loss_and_returns_finite_graphs():
     assert result.W[0].shape == (8, 8)
     assert all(np.all(np.isfinite(w)) for w in result.W)
     assert all(np.all(np.isfinite(a)) for a in result.A)
+    assert result.Delta_W is not None
+    assert "h_returned_max" in result.diagnostics
 
 
 def test_fit_rejects_unknown_loss():
@@ -94,6 +96,8 @@ def test_admm_outputs_acyclic_sparse_and_finite():
     assert int((res.W[0][offdiag] == 0.0).sum()) > 0
     assert int((res.Delta_W[offdiag] == 0.0).sum()) > 0
     assert res.history[-1]["max_h"] < 1e-1
+    assert res.diagnostics["h_returned_max"] < 1e-1
+    assert "primal_res_last" in res.diagnostics
 
 
 def test_fit_rejects_unknown_solver():

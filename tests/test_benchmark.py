@@ -16,7 +16,7 @@ def _tiny_grid():
 
 def test_run_grid_covers_loss_by_fusion_2x2():
     rows = _tiny_grid()
-    combos = {(r["loss"], r["gamma"] > 0) for r in rows}
+    combos = {(r["loss"], r["gamma_w"] > 0 or r["gamma_a"] > 0) for r in rows}
     assert combos == {
         ("gaussian", False),
         ("gaussian", True),
@@ -28,25 +28,29 @@ def test_run_grid_covers_loss_by_fusion_2x2():
 def test_run_grid_rows_expose_expected_columns():
     row = _tiny_grid()[0]
     for key in (
-        "seed", "n", "d", "p", "loss", "gamma", "standardize",
+        "seed", "n", "d", "p", "nu", "loss", "gamma", "standardize",
         "varsort_raw", "varsort_fit", "auroc_change_w", "auroc_change_a",
         "max_h", "seconds",
     ):
         assert key in row, key
+    assert "gamma_w" in row
+    assert "gamma_a" in row
+    assert "nu" in row
     assert 0.0 <= row["auroc_change_w"] <= 1.0
 
 
 def test_summarize_grid_computes_mean_and_standard_error():
     rows = [
-        {"solver": "admm", "loss": "gaussian", "gamma": 0.0,
+        {"p": 1, "nu": 5.0, "solver": "admm", "loss": "gaussian", "gamma": 0.0,
          "auroc_change_w": 0.8, "auroc_change_a": 0.5, "max_h": 0.01, "seconds": 0.3},
-        {"solver": "admm", "loss": "gaussian", "gamma": 0.0,
+        {"p": 1, "nu": 5.0, "solver": "admm", "loss": "gaussian", "gamma": 0.0,
          "auroc_change_w": 0.6, "auroc_change_a": 0.5, "max_h": 0.01, "seconds": 0.3},
     ]
     summ = summarize_grid(rows)
     assert len(summ) == 1
     cell = summ[0]
     assert (cell["solver"], cell["loss"], cell["fusion"]) == ("admm", "gaussian", "indep")
+    assert cell["p"] == 1
     assert cell["n_fits"] == 2
     assert np.isclose(cell["auroc_w_mean"], 0.7)
     # sample stdev of [0.8, 0.6] is sqrt(0.02); se = stdev / sqrt(2) = 0.1
@@ -54,7 +58,7 @@ def test_summarize_grid_computes_mean_and_standard_error():
 
 
 def test_summarize_grid_single_fit_has_zero_se():
-    rows = [{"solver": "admm", "loss": "gaussian", "gamma": 0.1,
+    rows = [{"p": 1, "nu": 5.0, "solver": "admm", "loss": "gaussian", "gamma": 0.1,
              "auroc_change_w": 0.9, "auroc_change_a": 0.5, "max_h": 0.0, "seconds": 0.1}]
     cell = summarize_grid(rows)[0]
     assert cell["fusion"] == "fused"
@@ -79,7 +83,7 @@ def test_run_grid_includes_solver_axis():
         lbfgs_max_iter=8, outer_max_iter=2,
     )
     assert {r["solver"] for r in rows} == {"lbfgs_smooth", "admm"}
-    assert len(rows) == 2 * 2 * 2  # solver x loss x fusion
+    assert len(rows) == 2 * 2 * 2 * 2  # solver x loss x gamma_w x gamma_a
 
 
 def test_standardization_drives_var_sortability_to_one_half():

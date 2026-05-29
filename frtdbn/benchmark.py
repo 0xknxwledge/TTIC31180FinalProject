@@ -35,6 +35,7 @@ def run_one(
     p: int,
     loss: str,
     gamma: float,
+    gamma_a: float | None = None,
     solver: str = "lbfgs_smooth",
     standardize: bool = True,
     lambda_reg: float = 0.03,
@@ -56,6 +57,7 @@ def run_one(
         targets.append(target)
         lags.append(lagged)
 
+    gamma_a = gamma if gamma_a is None else gamma_a
     cfg = FitConfig(
         p=p,
         loss=loss,
@@ -63,7 +65,7 @@ def run_one(
         lambda_w=lambda_reg,
         lambda_a=lambda_reg,
         gamma_w=gamma,
-        gamma_a=gamma,
+        gamma_a=gamma_a,
         nu=nu,
         lbfgs_max_iter=lbfgs_max_iter,
         outer_max_iter=outer_max_iter,
@@ -79,9 +81,12 @@ def run_one(
         "n": int(n),
         "d": int(d),
         "p": int(p),
+        "nu": float(nu),
         "loss": loss,
         "solver": solver,
         "gamma": float(gamma),
+        "gamma_w": float(gamma),
+        "gamma_a": float(gamma_a),
         "standardize": bool(standardize),
         "varsort_raw": float(varsort_raw),
         "varsort_fit": float(varsort_fit),
@@ -103,13 +108,23 @@ def _mean_se(values: list[float]) -> tuple[float, float]:
 def summarize_grid(rows: list[dict]) -> list[dict]:
     """Aggregate per-fit rows into per-(solver, loss, fusion) mean +/- se cells."""
 
-    cells: dict[tuple[str, str, str], list[dict]] = {}
+    cells: dict[tuple[int, float, str, str, str, float, float], list[dict]] = {}
     for row in rows:
-        key = (row["solver"], row["loss"], "fused" if row["gamma"] > 0 else "indep")
+        gamma_w = float(row.get("gamma_w", row["gamma"]))
+        gamma_a = float(row.get("gamma_a", row["gamma"]))
+        key = (
+            int(row["p"]),
+            float(row.get("nu", float("nan"))),
+            row["solver"],
+            row["loss"],
+            "fused" if (gamma_w > 0 or gamma_a > 0) else "indep",
+            gamma_w,
+            gamma_a,
+        )
         cells.setdefault(key, []).append(row)
 
     out: list[dict] = []
-    for (solver, loss, fusion), group in cells.items():
+    for (p, nu, solver, loss, fusion, gamma_w, gamma_a), group in cells.items():
         w_mean, w_se = _mean_se([r["auroc_change_w"] for r in group])
         a_mean, a_se = _mean_se([r["auroc_change_a"] for r in group])
         out.append(
@@ -117,6 +132,10 @@ def summarize_grid(rows: list[dict]) -> list[dict]:
                 "solver": solver,
                 "loss": loss,
                 "fusion": fusion,
+                "p": p,
+                "nu": nu,
+                "gamma_w": gamma_w,
+                "gamma_a": gamma_a,
                 "n_fits": len(group),
                 "auroc_w_mean": w_mean,
                 "auroc_w_se": w_se,
@@ -136,6 +155,7 @@ def run_grid(
     seeds: list[int],
     losses: tuple[str, ...] = ("gaussian", "student_t"),
     gammas: tuple[float, ...] = (0.0, 0.04),
+    gamma_as: tuple[float, ...] | None = None,
     solvers: tuple[str, ...] = ("lbfgs_smooth", "admm"),
     standardize: bool = True,
     lambda_reg: float = 0.03,
@@ -145,26 +165,29 @@ def run_grid(
 ) -> list[dict[str, float | str | bool]]:
     """Run the full {solver} x {loss} x {fusion} grid over the requested n and seeds."""
 
+    gamma_as = gammas if gamma_as is None else gamma_as
     rows: list[dict[str, float | str | bool]] = []
     for n in n_values:
         for seed in seeds:
             for solver in solvers:
                 for loss in losses:
                     for gamma in gammas:
-                        rows.append(
-                            run_one(
-                                seed=seed,
-                                n=n,
-                                d=d,
-                                p=p,
-                                loss=loss,
-                                gamma=gamma,
-                                solver=solver,
-                                standardize=standardize,
-                                lambda_reg=lambda_reg,
-                                nu=nu,
-                                lbfgs_max_iter=lbfgs_max_iter,
-                                outer_max_iter=outer_max_iter,
+                        for gamma_a in gamma_as:
+                            rows.append(
+                                run_one(
+                                    seed=seed,
+                                    n=n,
+                                    d=d,
+                                    p=p,
+                                    loss=loss,
+                                    gamma=gamma,
+                                    gamma_a=gamma_a,
+                                    solver=solver,
+                                    standardize=standardize,
+                                    lambda_reg=lambda_reg,
+                                    nu=nu,
+                                    lbfgs_max_iter=lbfgs_max_iter,
+                                    outer_max_iter=outer_max_iter,
+                                )
                             )
-                        )
     return rows

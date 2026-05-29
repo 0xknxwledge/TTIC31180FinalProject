@@ -9,11 +9,16 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
+# macOS
+.DS_Store
+
 # Build
 .dist/
 
-# Data caches (regenerable via scripts/)
+# Data caches + large local inputs (regenerable / re-downloadable)
 data/raw/
+data/*.zip
+data/stooq_*/
 
 # Scratch benchmark outputs; committed results are outputs/headline_*.csv
 outputs/*.csv
