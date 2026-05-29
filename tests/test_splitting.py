@@ -1,6 +1,10 @@
 import numpy as np
 
-from frtdbn.splitting import time_block_indices, train_test_split_regimes
+from frtdbn.splitting import (
+    split_panel_by_regime,
+    time_block_indices,
+    train_test_split_regimes,
+)
 
 
 def _regimes():
@@ -31,6 +35,18 @@ def test_train_test_split_rejects_bad_fraction():
             assert False, "expected ValueError"
         except ValueError:
             pass
+
+
+def test_split_panel_by_regime_partitions_rows_by_label():
+    target = np.arange(12).reshape(6, 2).astype(float)
+    lags = [target + 100.0]
+    labels = np.array([0, 1, 0, 1, 0, 1])
+
+    tbr, lbr = split_panel_by_regime(target, lags, labels)
+
+    assert tbr[0].shape == (3, 2) and tbr[1].shape == (3, 2)   # [ordinary, event]
+    assert np.array_equal(tbr[1], target[[1, 3, 5]])
+    assert np.array_equal(lbr[0][0], (target + 100.0)[[0, 2, 4]])  # lag rows stay aligned
 
 
 def test_time_block_indices_partition_is_complete_and_contiguous():

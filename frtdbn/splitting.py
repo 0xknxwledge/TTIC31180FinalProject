@@ -38,6 +38,23 @@ def train_test_split_regimes(
     return train_t, train_l, test_t, test_l
 
 
+def split_panel_by_regime(
+    target: np.ndarray,
+    lags: list[np.ndarray],
+    labels: np.ndarray,
+) -> tuple[list[np.ndarray], list[list[np.ndarray]]]:
+    """Partition a lagged design into [ordinary (label 0), event (label 1)] regimes.
+
+    Lag rows stay aligned with their target rows. The event regime is the bars
+    tagged by `label_event_regime`; the rest are ordinary.
+    """
+
+    labels = np.asarray(labels)
+    targets_by_regime = [target[labels == k] for k in (0, 1)]
+    lags_by_regime = [[lag[labels == k] for lag in lags] for k in (0, 1)]
+    return targets_by_regime, lags_by_regime
+
+
 def time_block_indices(n: int, n_blocks: int) -> list[np.ndarray]:
     """Partition range(n) into `n_blocks` contiguous, near-equal index blocks."""
 

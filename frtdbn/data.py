@@ -179,6 +179,137 @@ def _as_utc_timestamp(value: str | pd.Timestamp) -> pd.Timestamp:
 
 
 STOOQ_OUT_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
+OHLCV_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
+
+
+def normalize_yahoo_hourly(raw: pd.DataFrame) -> pd.DataFrame:
+    """Normalize a `yfinance` hourly download to the tidy OHLCV schema.
+
+    Handles yfinance's MultiIndex `(field, ticker)` columns and its tz-aware
+    (UTC) DatetimeIndex. Timestamps are returned **tz-naive UTC** to match the
+    rest of the pipeline; unlike Stooq, Yahoo's index is an explicit UTC anchor,
+    so it can also be used to calibrate the Stooq time zone.
+    """
+
+    if raw is None or raw.empty:
+        return pd.DataFrame(columns=OHLCV_COLUMNS)
+    df = raw.copy()
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df = df.reset_index()
+    ts = pd.to_datetime(df.iloc[:, 0])
+    if getattr(ts.dt, "tz", None) is not None:
+        ts = ts.dt.tz_convert("UTC").dt.tz_localize(None)
+    cols = {str(c).lower(): c for c in df.columns}
+    out = pd.DataFrame(
+        {
+            "timestamp": ts.to_numpy(),
+            "open": df[cols["open"]].astype(float).to_numpy(),
+            "high": df[cols["high"]].astype(float).to_numpy(),
+            "low": df[cols["low"]].astype(float).to_numpy(),
+            "close": df[cols["close"]].astype(float).to_numpy(),
+            "volume": (df[cols["volume"]].astype(float).to_numpy() if "volume" in cols else 0.0),
+        }
+    )
+    return out.dropna(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+
+
+def _retry(fn, retries: int = 4, base_delay: float = 3.0, max_delay: float = 60.0, sleep=time.sleep):
+    """Call `fn`, retrying on any exception with exponential backoff + cap."""
+
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return fn()
+        except Exception as exc:  # transient network / Yahoo 429s
+            last_exc = exc
+            if attempt == retries:
+                break
+            sleep(min(base_delay * (2 ** attempt), max_delay))
+    assert last_exc is not None
+    raise last_exc
+
+
+def _yahoo_session():
+    """A curl_cffi browser-impersonating session if available, else None.
+
+    Yahoo's crumb/cookie handshake (and thus the 429 rate-limit) is reliably
+    satisfied by a real browser TLS fingerprint, which `curl_cffi` provides.
+    """
+
+    try:
+        from curl_cffi import requests as cffi_requests
+
+        return cffi_requests.Session(impersonate="chrome")
+    except Exception:
+        return None
+
+
+def fetch_yahoo_hourly(
+    ticker: str,
+    period: str = "730d",
+    start: str | None = None,
+    end: str | None = None,
+    auto_adjust: bool = False,
+    session=None,
+    retries: int = 4,
+    base_delay: float = 3.0,
+) -> pd.DataFrame:
+    """Fetch hourly bars from Yahoo Finance (needs network). ~730d intraday cap.
+
+    Uses a curl_cffi browser-impersonating session (install `curl_cffi`) plus
+    exponential backoff to get past Yahoo's rate limiter. An empty response is
+    treated as a (likely rate-limited) failure and retried. Pass `period` OR
+    `start`/`end`. Returns the tidy OHLCV schema.
+    """
+
+    import yfinance as yf  # imported lazily so the module loads without network deps
+
+    if session is None:
+        session = _yahoo_session()
+    kwargs = {"interval": "1h", "auto_adjust": auto_adjust, "progress": False}
+    if start is not None or end is not None:
+        kwargs.update({"start": start, "end": end})
+    else:
+        kwargs["period"] = period
+
+    def _download() -> pd.DataFrame:
+        if session is not None:
+            try:
+                raw = yf.download(ticker, session=session, **kwargs)
+            except TypeError:  # yfinance build manages curl_cffi internally
+                raw = yf.download(ticker, **kwargs)
+        else:
+            raw = yf.download(ticker, **kwargs)
+        if raw is None or raw.empty:
+            raise RuntimeError(f"empty/rate-limited Yahoo response for {ticker!r}")
+        return raw
+
+    return normalize_yahoo_hourly(_retry(_download, retries=retries, base_delay=base_delay))
+
+
+def cache_yahoo_hourly(
+    symbols: Iterable[str],
+    cache_dir: str | Path = "data/raw/yahoo",
+    period: str = "730d",
+    start: str | None = None,
+    end: str | None = None,
+    pause_seconds: float = 2.0,
+) -> dict[str, Path]:
+    """Fetch and cache one parquet per Yahoo symbol, throttled between symbols."""
+
+    out_dir = Path(cache_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    session = _yahoo_session()  # reuse one session across symbols
+    written: dict[str, Path] = {}
+    for i, symbol in enumerate(symbols):
+        if i > 0:
+            time.sleep(pause_seconds)
+        frame = fetch_yahoo_hourly(symbol, period=period, start=start, end=end, session=session)
+        path = out_dir / f"{safe_symbol_name(symbol)}_1h.parquet"
+        frame.to_parquet(path, index=False)
+        written[symbol] = path
+    return written
 
 
 def load_stooq_txt(path: str | Path) -> pd.DataFrame:
@@ -242,6 +373,31 @@ def audit_symbol_coverage(df: pd.DataFrame, symbol: str) -> dict:
         "close_nulls": int(close.isna().sum()),
         "close_nonpositive": int((close <= 0).sum()),
     }
+
+
+def build_return_panel(
+    frames_by_symbol: dict[str, pd.DataFrame],
+    method: str = "log",
+) -> pd.DataFrame:
+    """Assemble a wide return panel from per-symbol OHLCV frames.
+
+    Closes are aligned on the union of timestamps (outer join); returns are
+    computed per column, then rows with any missing return are dropped — which
+    naturally restricts the panel to the common trading grid (e.g. equity RTH,
+    where 24/7 crypto is also active). Feed `timestamp`-bearing frames already on
+    a single time zone (e.g. all UTC).
+    """
+
+    closes: dict[str, pd.Series] = {}
+    for symbol, df in frames_by_symbol.items():
+        # Yahoo stamps asset classes at different minute offsets (equities :30,
+        # crypto/FX :00, ^TNX :20); floor to the hour so they share one grid.
+        idx = pd.to_datetime(df["timestamp"]).dt.floor("h")
+        s = pd.Series(df["close"].astype(float).to_numpy(), index=idx)
+        closes[symbol] = s[~s.index.duplicated(keep="last")].sort_index()
+    prices = pd.DataFrame(closes).sort_index().sort_index(axis=1)
+    rets = np.log(prices).diff() if method == "log" else prices.pct_change()
+    return rets.dropna(how="any")
 
 
 def close_to_return_panel(frames: Iterable[pd.DataFrame]) -> pd.DataFrame:

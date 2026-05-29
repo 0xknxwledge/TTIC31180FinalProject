@@ -16,9 +16,7 @@ __pycache__/
 .dist/
 
 # Data caches + large local inputs (regenerable / re-downloadable)
-data/raw/
-data/*.zip
-data/stooq_*/
+data/raw/yahoo
 
 # Scratch benchmark outputs; committed results are outputs/headline_*.csv
 outputs/*.csv
