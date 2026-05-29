@@ -1,15 +1,22 @@
 # Macro event calendar for the panel window (2024-06 .. 2026-05).
 # Times are US Eastern (release convention); load_event_calendar converts to UTC (DST-aware).
-# DRAFT — verify against the official schedules before reporting results:
-#   CPI/NFP: BLS release schedule (bls.gov)   FOMC: federalreserve.gov
-# NFP = first Friday 08:30 ET (2025-07-03 shifted off the July-4 holiday).
-# FOMC statement = 14:00 ET. CPI = 08:30 ET.
-# CPI dates verified against official BLS schedules on 2026-05-29.
+# CPI/NFP dates verified against official BLS schedules on 2026-05-29.
+# FOMC meeting dates/times verified against official Federal Reserve schedules/statements on 2026-05-29.
+# FOMC statement = 14:00 ET. CPI/NFP = 08:30 ET.
 # Exceptions from lapse-related BLS revisions:
 #   - Sep. 2025 CPI was released 2025-10-24, not 2025-10-15.
 #   - Oct. 2025 CPI was canceled/not published; no 2025-11-13 CPI event.
 #   - Nov. 2025 CPI was released 2025-12-18, not 2025-12-10.
 #   - Jan. 2026 CPI was released 2026-02-13, not 2026-02-11.
+#   - Sep. 2025 Employment Situation was released 2025-11-20, not 2025-10-03.
+#   - Oct. 2025 Employment Situation was canceled/not published; no 2025-11-07 NFP event.
+#   - Nov. 2025 Employment Situation was released 2025-12-16, not 2025-12-05.
+#   - Jan. 2026 Employment Situation was released 2026-02-11, not 2026-02-06.
+# Other non-first-Friday NFP dates from official BLS schedules:
+#   - Dec. 2024 Employment Situation was released 2025-01-10.
+#   - Jun. 2025 Employment Situation was released 2025-07-03 before the July-4 holiday.
+#   - Dec. 2025 Employment Situation was released 2026-01-09.
+#   - Apr. 2026 Employment Situation was released 2026-05-08.
 date,time_et,event_type
 2024-06-07,08:30,NFP
 2024-06-12,08:30,CPI
@@ -30,7 +37,7 @@ date,time_et,event_type
 2024-12-06,08:30,NFP
 2024-12-11,08:30,CPI
 2024-12-18,14:00,FOMC
-2025-01-03,08:30,NFP
+2025-01-10,08:30,NFP
 2025-01-15,08:30,CPI
 2025-01-29,14:00,FOMC
 2025-02-07,08:30,NFP
@@ -54,17 +61,16 @@ date,time_et,event_type
 2025-09-05,08:30,NFP
 2025-09-11,08:30,CPI
 2025-09-17,14:00,FOMC
-2025-10-03,08:30,NFP
 2025-10-24,08:30,CPI
 2025-10-29,14:00,FOMC
-2025-11-07,08:30,NFP
-2025-12-05,08:30,NFP
+2025-11-20,08:30,NFP
 2025-12-10,14:00,FOMC
+2025-12-16,08:30,NFP
 2025-12-18,08:30,CPI
-2026-01-02,08:30,NFP
+2026-01-09,08:30,NFP
 2026-01-13,08:30,CPI
 2026-01-28,14:00,FOMC
-2026-02-06,08:30,NFP
+2026-02-11,08:30,NFP
 2026-02-13,08:30,CPI
 2026-03-06,08:30,NFP
 2026-03-11,08:30,CPI
@@ -72,5 +78,5 @@ date,time_et,event_type
 2026-04-03,08:30,NFP
 2026-04-10,08:30,CPI
 2026-04-29,14:00,FOMC
-2026-05-01,08:30,NFP
+2026-05-08,08:30,NFP
 2026-05-12,08:30,CPI

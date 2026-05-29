@@ -75,14 +75,16 @@ lasso. On a var-sortability-controlled synthetic benchmark (designs standardized
 var-sortability $=0.50$), the full estimator recovers the change graph $+0.19$ to
 $+0.31$ change-$W$ AUROC better than the DYNOTEARS-equivalent across change-edge
 count, sample size, and tail heaviness, with the gap widest under heavy tails. The
-exact-prox solver is the dominant lever, Student-$t$ and fusion help secondarily,
-and held-out-likelihood selection chooses fusion ($\gamma>0$) in every seed. We
+ADMM/exact-prox implementation is the largest observed lever, Student-$t$ and fusion
+help secondarily, and held-out-likelihood selection chooses fusion ($\gamma>0$) in
+every seed. We
 then apply the method to a $d=23$ hourly cross-asset panel (2024--2026) around
 U.S.\ macro releases (CPI/NFP/FOMC). The contemporaneous DAG is strongly justified
 (out-of-sample $\W\equiv 0$ gate: DAG $\gg$ SVAR; Student-$t$ beats Gaussian
-density), but the empirical hypothesis is \emph{not} supported: neither the
-contemporaneous nor the lagged structure changes around events beyond a
-volatility-matched null, at global or edge-wise resolution, and held-out selection
+density), but the empirical hypothesis is \emph{not} supported for the contemporaneous
+change graph: global and edge-wise tests are null. Lagged edge-wise tests also have
+no BH-FDR discoveries; the lone lagged global rejection reflects event-regime
+shrinkage rather than interpretable edge-level reorganization. Held-out selection
 independently drives the fusion penalty $\gamma\to 0$. We report this as a
 carefully-controlled negative result, separate from the validated methodological
 contribution.
@@ -130,10 +132,12 @@ hourly over two years, asking a concrete empirical question: \emph{does the
 conditional dependency structure linking crypto, equities, rates, FX, and volatility
 reorganize around scheduled macro releases (CPI/NFP/FOMC), and which edges flip?}
 The contemporaneous DAG is strongly justified. But tested against a
-volatility-matched null, the change graph is indistinguishable from chance at both
-global and edge-wise resolution, for both contemporaneous and lagged structure.
-Principled model selection corroborates this independently by driving the fusion
-penalty to zero. We report the null as the defensible empirical statement.
+volatility-matched null, the contemporaneous change graph is indistinguishable from
+chance at both global and edge-wise resolution. Lagged edge-wise tests likewise
+find no BH-FDR discoveries; the small global lagged-norm rejection is a diagnostic
+of event-regime shrinkage, not a stable set of changing lead-lag edges. Principled
+model selection corroborates the contemporaneous null independently by driving the
+fusion penalty to zero. We report the null as the defensible empirical statement.
 
 \paragraph{Contributions.}
 \begin{enumerate}\itemsep2pt
@@ -142,15 +146,16 @@ penalty to zero. We report the null as the defensible empirical statement.
   fused-lasso prox inside the NOTEARS augmented-Lagrangian loop (\S\ref{sec:method}).
   \item \textbf{Var-sortability-controlled evidence.} On a standardized benchmark,
   FR-tDBN recovers the change graph $+0.19$ to $+0.31$ AUROC better than the
-  DYNOTEARS-equivalent across the design space; we attribute the gain to the
-  exact-prox solver (dominant), the Student-$t$ loss, and fusion, via a one-codebase
-  ablation, and confirm robustness to a rank transform and to principled $(\lambda,\gamma)$
+  DYNOTEARS-equivalent across the design space; a one-codebase ablation associates
+  the gain mainly with the ADMM/exact-prox implementation, then the Student-$t$ loss
+  and fusion, and confirms robustness to a rank transform and to principled $(\lambda,\gamma)$
   selection (\S\ref{sec:synthetic}).
   \item \textbf{A controlled cross-asset null.} On real data we justify the
   contemporaneous DAG out-of-sample, then show with volatility-matched global and
   edge-wise permutation tests (and corroborating held-out selection) that scheduled
-  macro events do \emph{not} measurably reorganize the dependency graph at hourly
-  resolution (\S\ref{sec:application}).
+  macro events do \emph{not} measurably reorganize the contemporaneous graph at
+  hourly resolution, while lagged edge-wise tests find no stable event-specific edges
+  (\S\ref{sec:application}).
 \end{enumerate}
 
 \section{Method: Fused-Regime Student-$t$ DBN}
@@ -272,12 +277,16 @@ Empirically $\max_k h(\W^k)\approx 4\times10^{-3}$ at convergence, and ADMM $\ti
 nonconvex acyclicity did not require the warm-start fallback we had budgeted for.
 
 \subsection{Variants and ablations}
-A single codebase exposes four orthogonal switches, enabling fair attribution. The
+A single codebase exposes four switches for comparative attribution. The
 loss $\in\{\text{Student-}t,\text{Gaussian}\}$ isolates heavy tails; the fusion
 strength toggles $\gamma{=}0$ (independent per-regime fits) against $\gamma{>}0$; the
 solver $\in\{\texttt{admm}$ (exact prox, headline), $\texttt{lbfgs\_smooth}$ (smoothed
-$\sqrt{x^2+\epsilon}$, the DYNOTEARS-style baseline)$\}$ isolates the prox; and an
-adaptive-fusion option sets $\gamma_{ij}=\gamma_0/(|\hat\Delta_{ij}|+\epsilon)$.
+$\sqrt{x^2+\epsilon}$, the DYNOTEARS-style baseline)$\}$ compares exact-prox ADMM to
+the smoothed-$\ell_1$ implementation; and an adaptive-fusion option sets
+$\gamma_{ij}=\gamma_0/(|\hat\Delta_{ij}|+\epsilon)$. Because the smooth baseline
+normalizes its smoothed penalties with the loss while ADMM applies the nonsmooth prox
+at the stated $\lambda,\gamma$ scale, the solver arm is a practical baseline
+comparison rather than a perfectly scale-matched prox-only ablation.
 The Gaussian, independent, smoothed-$\ell_1$ corner is our reimplementation of
 DYNOTEARS, labeled the ``DYNOTEARS-equivalent'' throughout.
 
@@ -302,9 +311,10 @@ Table~\ref{tab:grid} reports change-$W$ AUROC over a solver $\times$ loss $\time
 fusion grid, $24$ fits per cell. Three findings are robust at $\gtrsim 2$ s.e.\ in
 both the balanced/moderate-tail regime ($\nu{=}5$, $n\in\{50,100\}$) and the
 small-sample/heavy-tail regime ($\nu{=}3$, $n\in\{20,35\}$):
-(i) the exact-prox ADMM solver \emph{dominates} smoothed-$\ell_1$ everywhere
-($+0.13$ or more), and even ADMM-independent beats smooth-fused, so the solver is the
-single largest lever; (ii) Student-$t$ helps under ADMM ($+0.10$ to $0.12$ over
+(i) the ADMM/exact-prox implementation outperforms smoothed-$\ell_1$ everywhere
+($+0.13$ or more), and even ADMM-independent beats smooth-fused, so this is the
+largest observed lever, subject to the penalty-scaling caveat above; (ii) Student-$t$
+helps under ADMM ($+0.10$ to $0.12$ over
 Gaussian); and (iii) fusion helps the weaker (Gaussian) estimator
 ($+0.06$ to $0.08$) and the balanced regime, while its marginal gain on top of
 Student-$t$ is within noise. The full FR-tDBN (ADMM, Student-$t$, fused) is the
@@ -370,8 +380,10 @@ every available pilot already shrinks the true $\Delta$, so the reweighting
 over-penalizes the genuine change edges and collapses $\Wd$ to near-empty. The
 unbiased-pilot assumption is violated; we report the failure rather than omit it.
 A related limitation is that exact support recovery (F1) at small event-$n$ is
-hard even for uniform fusion (F1$\approx 0.22$), which is why we report AUROC and adopt
-stability selection on real data rather than trusting a single fit's support.
+hard even for uniform fusion (mean F1 $0.15$ across $n\in\{20,35\}$, $0.20$ at
+$n=35$), while adaptive fusion falls to F1 $0.06$--$0.09$ with near-empty supports.
+This is why we report AUROC and adopt stability selection on real data rather than
+trusting a single fit's support.
 
 \section{Cross-Asset Structure Around U.S. Macroeconomic Releases}
 \label{sec:application}
@@ -385,12 +397,13 @@ its keep, but the question and the panel are macro-wide rather than crypto-speci
 
 \subsection{Data and event regime}
 We use hourly close prices from Yahoo Finance over the common window
-2024-05-30 to 2026-05-28 (UTC), giving $2{,}962$ hourly bars across $499$ trading days
-with zero missing returns after alignment to the common trading grid. The $d=23$ panel
-spans six blocks (Table~\ref{tab:panel}). Construction floors each timestamp to the
-hour, aligns on the union grid, takes log returns, drops any-NaN rows, then applies a
-rolling past-only $z$-score (window $250$, min-periods $60$; no look-ahead)
-before building the lagged design. We use $p=1$, justified empirically below.
+2024-05-30 to 2026-05-28 (UTC). The aligned return panel contains $2{,}962$ hourly
+return rows across $498$ trading dates before preprocessing. The $d=23$ panel spans
+six blocks (Table~\ref{tab:panel}). Construction floors each timestamp to the hour,
+aligns on the union grid, takes log returns, drops any-NaN rows, then applies a
+rolling past-only $z$-score (window $250$, min-periods $60$; no look-ahead). After
+the rolling warmup and $p=1$ lagging, the fitted design contains $2{,}901$ target rows
+across $488$ dates. We use $p=1$, justified empirically below.
 
 \begin{table}[t]
 \centering
@@ -414,8 +427,9 @@ crypto (spot)          & BTC, ETH, SOL, XRP, LINK\\
 The event regime comes from \texttt{data/events.csv}, which holds CPI/NFP/FOMC release
 times (08:30 ET for CPI/NFP, 14:00 ET for FOMC), verified against official BLS/Fed
 schedules including the 2025 lapse-driven exceptions, converted ET$\to$UTC with DST
-awareness. Bars within $\pm2$h of a release are tagged event, giving $104$ event bars
-(3.6\%): the small-$n_{\text{event}}$ borrow-strength regime the fusion targets. Because
+awareness. Bars within $\pm2$h of a release are tagged event, giving $103$ event bars
+(3.6\%; $22$ CPI, $21$ NFP, $60$ FOMC): the small-$n_{\text{event}}$
+borrow-strength regime the fusion targets. Because
 08:30-ET CPI/NFP precede the cash-equity open, their windows on this RTH panel capture
 the post-open reaction; FOMC at 14:00 ET is mid-session and captured directly.
 
@@ -490,15 +504,15 @@ The global magnitude of $\Wd$, however, is not beyond a volatility-matched null
 \label{fig:heatmaps}
 \end{figure}
 
-\paragraph{The change graph is null (global and edge-wise).}
-This is the central empirical result. \emph{Globally}, observed $\|\Wd\|_1=8.10$
-against a volatility/block-matched regime-label null with mean $8.91$ ($p\approx 0.81$):
+\paragraph{The contemporaneous change graph is null (global and edge-wise).}
+This is the central empirical result. \emph{Globally}, observed $\|\Wd\|_1=7.97$
+against a volatility/block-matched regime-label null with mean $9.26$ ($p\approx 0.95$):
 the magnitude of change is not beyond random vol-matched relabeling.
-\emph{Edge-wise}, only $10$ edges reach raw $p<0.05$ versus $\approx 25$ expected by
+\emph{Edge-wise}, only $9$ edges reach raw $p<0.05$ versus $\approx 25$ expected by
 chance, and $0$ survive BH-FDR. The change is concentrated neither in
 magnitude nor in specific edges. The result is robust across event type and window
 (Table~\ref{tab:nulls}): every observed $\|\Wd\|_1$ is at or below its matched-null
-mean (all $p\ge 0.52$).
+mean (all $p\ge 0.76$).
 
 \begin{table}[t]
 \centering
@@ -509,10 +523,10 @@ setting & $n_{\text{event}}$ & observed $\|\Wd\|_1$ & null mean & $p$\\
 \midrule
 type = FOMC   & 60  & 11.80 & 13.37 & 1.00\\
 type = CPI    & 22  & 14.64 & 14.66 & 0.76\\
-type = NFP    & 22  & 14.55 & 14.64 & 0.95\\
+type = NFP    & 21  & 14.55 & 14.66 & 1.00\\
 window $\pm$1h & 45  & 12.26 & 14.17 & 1.00\\
-window $\pm$2h & 104 & \phantom{0}8.10 & \phantom{0}8.91 & 0.81\\
-window $\pm$4h & 221 & \phantom{0}5.09 & \phantom{0}5.20 & 0.52\\
+window $\pm$2h & 103 & \phantom{0}7.97 & \phantom{0}9.26 & 0.95\\
+window $\pm$4h & 218 & \phantom{0}5.11 & \phantom{0}5.61 & 0.86\\
 \bottomrule
 \end{tabular}
 \caption{Volatility-matched permutation null for $\|\Wd\|_1$ across event types and
@@ -520,19 +534,22 @@ windows. Every observed norm is at or below its null mean; no setting rejects.}
 \label{tab:nulls}
 \end{table}
 
-\paragraph{Structure is overwhelmingly contemporaneous, and lag order is $1$.}
-OOS NLL is flat across $p\in\{1,\dots,6\}$ (range $0.2\%$, non-monotone) and lags
-$\ge 2$ carry negligible weight ($\|\A_\ell\|_1\approx 0.01$ vs.\ $\|\A_1\|_1\approx 0.76$
+\paragraph{Structure is overwhelmingly contemporaneous, and lag order $1$ is parsimonious.}
+OOS NLL is flat across the checked lag orders $p\in\{1,2,3,6\}$ (range $0.2\%$; $p=6$
+is lowest by only $0.18\%$) and lags $\ge 2$ carry negligible weight
+($\|\A_\ell\|_1\approx 0.01$ vs.\ $\|\A_1\|_1\approx 0.76$
 vs.\ $\|\W\|_1\approx 14.8$). The hourly cross-asset dependency is dominantly
 contemporaneous; lead-lag is $\sim 20\times$ weaker and effectively zero beyond
 $1$h, since genuine lead-lag lives at sub-hourly scales this two-year panel cannot
 resolve. The lag-$1$ graph still has a few sensible persistent edges, discussed with
-Fig.~\ref{fig:lag1}. Critically, the lagged structure is also
-null around events: edge-wise $\Ad$ gives $6$ edges at $p<0.05$ vs.\ $\approx 26$ by
-chance and $0$ BH survivors; the global $\|\Ad\|_1$ $p=0.095$ is an artifact (the
-$104$-row event regime cannot estimate the tiny lead-lag, so $\A^{\text{event}}\approx 0$
-and $\Ad\approx-\A^{\text{ordinary}}$). Neither $\W$ nor $\A$ reorganizes around
-events beyond a volatility-matched null.
+Fig.~\ref{fig:lag1}. Critically, the lagged structure has no edge-wise support around
+events: $\Ad$ gives $7$ raw edges at $p<0.05$ vs.\ $\approx 26$ by chance and $0$ BH
+survivors. The global $\|\Ad\|_1$ statistic is small but rejects
+($0.987$ vs.\ null mean $0.942$, $p\approx0.040$ over $100$ permutations); inspection
+shows this is a thin-event-regime artifact, since the $103$-row event regime cannot
+estimate the already-small lead-lag graph, so $\A^{\text{event}}\approx 0$ and
+$\Ad\approx-\A^{\text{ordinary}}$. Thus $\W$ is null globally and edge-wise, and $\A$
+has no edge-wise discoveries despite the global norm diagnostic.
 
 \paragraph{Persistent cross-asset structure (association, not cause).}
 Fitting one graph per two-month block (Figs.~\ref{fig:persist}--\ref{fig:topedges})
@@ -598,19 +615,21 @@ worth encoding}, an orthogonal witness to the same null.
 
 The methodological contribution is validated on ground truth: a fused, Student-$t$ DBN
 with an exact-prox ADMM solver recovers a sparse change graph substantially better than
-the DYNOTEARS-equivalent, with the advantage attributable primarily to the exact prox,
-secondarily to the heavy-tailed loss and fusion, and robust to a distribution-free
-transform and to principled penalty selection. The empirical study delivers a
-carefully-controlled negative result: scheduled macro events raise volatility
-(which the matched null absorbs) but do not measurably reorganize the conditional
-dependency graph at hourly RTH frequency over this window, at global or edge-wise
-resolution, for contemporaneous or lagged structure, and held-out selection
-independently declines to encode a change graph.
+the DYNOTEARS-equivalent, with the advantage associated primarily with the ADMM/exact-prox
+implementation, secondarily with the heavy-tailed loss and fusion, and robust to a
+distribution-free transform and to principled penalty selection. The solver ablation is
+a practical baseline comparison rather than a perfectly scale-matched prox-only
+isolation. The empirical study delivers a carefully-controlled negative result:
+scheduled macro events raise volatility (which the matched null absorbs) but do not
+measurably reorganize the contemporaneous conditional dependency graph at hourly RTH
+frequency over this window. Lagged edge-wise tests also find no stable changing edges;
+the lone global lagged-norm rejection is best read as an event-regime estimation
+artifact. Held-out selection independently declines to encode a change graph.
 
 Several limitations bound these conclusions. (1) Frequency and timing: real
 cross-asset lead-lag plausibly lives at sub-hourly scales an hourly two-year panel
 cannot resolve, and 08:30-ET releases are observed only post-open, so a minute-scale,
-near-24h panel is the natural next test. (2) Event-regime size: with $104$ event
+near-24h panel is the natural next test. (2) Event-regime size: with $103$ event
 bars, fusion has little out-of-sample signal and exact support recovery is hard, which
 is exactly why ground-truth simulation, not held-out density, is the right yardstick.
 (3) Scope: the closed-form prox is $K{=}2$ only; $K>2$, learned $\nu$, and
@@ -624,11 +643,13 @@ We presented FR-tDBN, a fused-regime Student-$t$ dynamic Bayesian network whose
 estimand is a sparse change graph, solved by consensus ADMM with a closed-form
 fused-lasso prox inside the NOTEARS augmented-Lagrangian loop. On a
 var-sortability-controlled benchmark it recovers the change graph far better than the
-DYNOTEARS-equivalent, driven mainly by the exact-prox solver. Applied to a complete
-cross-asset panel, it validates the contemporaneous heavy-tailed DAG but finds,
-under volatility-matched nulls and corroborating model selection, that scheduled macro
-events do not reorganize the dependency structure at hourly resolution: an honest,
-controlled null distinct from the validated method.
+DYNOTEARS-equivalent, with the gain associated mainly with the ADMM/exact-prox
+implementation. Applied to a complete cross-asset panel, it validates the
+contemporaneous heavy-tailed DAG but finds, under volatility-matched nulls and
+corroborating model selection, that scheduled macro events do not reorganize the
+contemporaneous dependency structure at hourly resolution; lagged edge-wise tests also
+find no stable event-specific edges. This is an honest, controlled null distinct from
+the validated method.
 
 \paragraph{Reproducibility.} All results come from one codebase (\texttt{frtdbn/});
 the synthetic grid/sweep, real-panel run, robustness, baselines, selection, and figures
