@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -20,6 +21,8 @@ class FitConfig:
     gamma_a: float = 0.05
     nu: float = 5.0
     loss: str = "student_t"
+    huber_delta: float = 1.345
+    nig_alpha: float = 1.0
     solver: str = "lbfgs_smooth"
     fusion: str = "uniform"
     adaptive_pilot: str = "uniform"
@@ -84,6 +87,66 @@ def _gaussian_nll(resid: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
     return (0.5 * (resid / scales) ** 2 + torch.log(scales)).sum()
 
 
+def _pseudo_huber_nll(resid: torch.Tensor, scales: torch.Tensor, delta: float) -> torch.Tensor:
+    """Pseudo-Huber data term on scale-normalized residuals.
+
+    ``delta`` is the quadratic-to-linear crossover in robust-scale (sigma)
+    units: quadratic for ``|z| << delta``, linear for ``|z| >> delta`` with a
+    *bounded* (non-redescending) influence, unlike the Student-t. This is a
+    robust loss, not a normalized log-density, so it is used only for the
+    recovery ablation (AUROC), not the held-out density comparisons. The
+    ``log(scales)`` term is constant at fixed scales and does not affect the
+    argmin; it is kept for consistency with the other arms.
+    """
+
+    z = resid / scales
+    huber = (delta * delta) * (torch.sqrt(1.0 + (z / delta) ** 2) - 1.0)
+    return (huber + torch.log(scales)).sum()
+
+
+class _LogBesselK1(torch.autograd.Function):
+    """Numerically stable, differentiable ``log K_1(x)`` for ``x > 0``.
+
+    ``torch.special.modified_bessel_k1`` has no autograd backward, and ``K_1``
+    underflows for large ``x``; we evaluate ``log K_1`` via the exponentially
+    scaled Bessel (``e^x K_1(x)``) and supply the analytic derivative
+    ``d/dx log K_1(x) = -K_0(x)/K_1(x) - 1/x`` (verified against finite
+    differences), using the ratio of scaled Bessels so it stays stable.
+    """
+
+    @staticmethod
+    def forward(ctx, x: torch.Tensor) -> torch.Tensor:
+        ctx.save_for_backward(x)
+        return torch.log(torch.special.scaled_modified_bessel_k1(x)) - x
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor) -> torch.Tensor:
+        (x,) = ctx.saved_tensors
+        sk0 = torch.special.scaled_modified_bessel_k0(x)
+        sk1 = torch.special.scaled_modified_bessel_k1(x)
+        return grad_output * (-(sk0 / sk1) - 1.0 / x)
+
+
+def _nig_nll(resid: torch.Tensor, scales: torch.Tensor, alpha: float) -> torch.Tensor:
+    """Symmetric Normal-Inverse-Gaussian negative log-likelihood.
+
+    A normal variance-mean mixture with an inverse-Gaussian mixing density
+    (Barndorff-Nielsen 1997): heavy-tailed, real-support, and a *proper*
+    density (unlike pseudo-Huber). We fit the standardized, symmetric case
+    (beta=0, mu=0, scale delta=alpha so the variance is exactly 1), with
+    ``alpha`` the single tail-steepness knob (small = heavier; alpha -> inf
+    recovers Gaussian). Residuals are scaled by ``sigma`` with the matching
+    ``log sigma`` Jacobian term, as for the Student-t arm.
+    """
+
+    z = resid / scales
+    r = torch.sqrt(alpha * alpha + z * z)            # sqrt(delta^2 + z^2), delta=alpha
+    log_k1 = _LogBesselK1.apply(alpha * r)
+    const = math.log(math.pi) - 2.0 * math.log(alpha) - alpha * alpha
+    nll_std = const + torch.log(r) - log_k1          # -log f_z(z; alpha)
+    return (nll_std + torch.log(scales)).sum()
+
+
 def _pack_A(A_param: torch.Tensor, p: int) -> list[torch.Tensor]:
     return [A_param[:, lag, :, :] for lag in range(p)]
 
@@ -109,8 +172,11 @@ def fit_fr_tdbn(
         default and shared across regimes.
     """
 
-    if config.loss not in ("student_t", "gaussian"):
-        raise ValueError(f"Unknown loss {config.loss!r}; expected 'student_t' or 'gaussian'.")
+    if config.loss not in ("student_t", "gaussian", "pseudo_huber", "nig"):
+        raise ValueError(
+            f"Unknown loss {config.loss!r}; expected 'student_t', 'gaussian', "
+            "'pseudo_huber', or 'nig'."
+        )
     if config.solver not in ("lbfgs_smooth", "admm"):
         raise ValueError(f"Unknown solver {config.solver!r}; expected 'lbfgs_smooth' or 'admm'.")
     if config.fusion not in ("uniform", "adaptive"):
@@ -173,6 +239,10 @@ def fit_fr_tdbn(
                 resid = X[k] - pred
                 if config.loss == "student_t":
                     nll = nll + _student_t_nll(resid, scale_t, config.nu)
+                elif config.loss == "pseudo_huber":
+                    nll = nll + _pseudo_huber_nll(resid, scale_t, config.huber_delta)
+                elif config.loss == "nig":
+                    nll = nll + _nig_nll(resid, scale_t, config.nig_alpha)
                 else:
                     nll = nll + _gaussian_nll(resid, scale_t)
                 sparsity = sparsity + config.lambda_w * _smooth_l1(W[k], config.smooth_eps)
@@ -305,6 +375,10 @@ def _run_admm(
     def nll_term(resid: torch.Tensor) -> torch.Tensor:
         if config.loss == "student_t":
             return _student_t_nll(resid, scale_t, config.nu)
+        if config.loss == "pseudo_huber":
+            return _pseudo_huber_nll(resid, scale_t, config.huber_delta)
+        if config.loss == "nig":
+            return _nig_nll(resid, scale_t, config.nig_alpha)
         return _gaussian_nll(resid, scale_t)
 
     primal = dual = 0.0

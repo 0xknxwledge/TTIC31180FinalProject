@@ -361,17 +361,20 @@ tail-heaviness sweeps (text).}
 \end{figure}
 
 \paragraph{Robustness of the methodological claim.}
-Two checks guard against artifacts. \emph{(a) Rank transform.} Replacing
+Two checks guard against artifacts. (a) Rank transform. Replacing
 standardization with a distribution-free rank (Gaussian-copula) transform shrinks the
 FR-tDBN advantage from $+0.24$ to $+0.14$ change-$W$ AUROC but leaves it clearly
 positive. The shrinkage is expected, since ranking compresses the heavy tails the
 Student-$t$ exploits, so the win is not a marginal-distribution artifact.
-\emph{(b) Principled $(\lambda,\gamma)$ selection.} Selecting penalties by held-out
+(b) Principled $(\lambda,\gamma)$ selection. Selecting penalties by held-out
 NLL on ground-truth data chooses fusion ($\gamma{=}0.02>0$) in $5/5$ seeds (modal
 $\lambda{=}0.03$); BIC is more conservative ($\lambda{=}0.1$, small $\gamma$). Fusion
 is thus chosen by a predictive criterion, not hand-tuned. We note that the
 held-out $\lambda$ sits at the grid's low edge while BIC's sits high, so the scientific
-parameter $\gamma$ is the stable, interpretable one.
+parameter $\gamma$ is the stable, interpretable one. (c) Loss form. Swapping the
+Student-$t$ data term for a pseudo-Huber or Normal-Inverse-Gaussian loss leaves the
+recovery advantage essentially unchanged (App.~\ref{app:huber}), so the gain reflects
+robustness to heavy tails rather than the specific Student-$t$ form.
 
 \paragraph{A documented negative ablation.}
 Adaptive fusion ($\gamma_{ij}=\gamma_0/(|\hat\Delta_{ij}|+\epsilon)$, in the spirit of
@@ -663,5 +666,57 @@ the author's.
 
 \bibliographystyle{plainnat}
 \bibliography{references}
+
+\appendix
+
+\section{Robustness of the recovery advantage to the choice of robust loss}
+\label{app:huber}
+
+Is FR-tDBN's change-graph recovery advantage specific to the Student-$t$ likelihood, or
+does any robust data term capture it? We add two alternative data terms and rerun the
+synthetic grid under the headline ADMM exact-prox solver with $W$-only fusion
+($\lambda{=}0.03$, $24$ fits/cell). The first is a convex \emph{pseudo-Huber} loss
+$\ell_\delta(e)=\delta^2\big(\sqrt{1+(e/\delta\sigma)^2}-1\big)$ ($\delta{=}1.345$ in
+robust-scale units; quadratic near zero, with linearly bounded influence in the tails),
+which is robust but not a normalized density and so is scored on recovery only. The
+second is a \emph{Normal-Inverse-Gaussian} (NIG) likelihood: a Gaussian whose variance
+is drawn from an inverse-Gaussian (a normal variance--mean mixture; we fit the
+standardized symmetric case with tail-steepness $\alpha{=}1$). NIG is itself a proper
+heavy-tailed density, so unlike pseudo-Huber it could also join the held-out comparison;
+we report recovery for a like-for-like contrast.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{$\nu=5$} & \multicolumn{2}{c}{$\nu=3$}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+data term & independent & fused & independent & fused\\
+\midrule
+Gaussian      & 0.755 (.027)          & 0.794 (.027)          & 0.590 (.034)          & 0.625 (.029)\\
+Student-$t$   & \textbf{0.869 (.023)} & 0.854 (.032)          & \textbf{0.684 (.032)} & \textbf{0.707 (.028)}\\
+pseudo-Huber  & 0.868 (.024)          & 0.846 (.030)          & 0.677 (.030)          & 0.683 (.026)\\
+NIG           & 0.865 (.024)          & \textbf{0.871 (.029)} & 0.637 (.032)          & 0.691 (.027)\\
+\bottomrule
+\end{tabular}
+\caption{Change-$W$ AUROC under four data terms (ADMM solver, $W$-only fusion, mean
+(s.e.) over $24$ fits/cell). Best per column in \textbf{bold}.}
+\label{tab:huber}
+\end{table}
+
+Three takeaways. First, all three robust losses beat Gaussian by a wide margin ($+0.09$
+to $+0.13$ in the independent fits), so the recovery gain reflects heavy-tailed modeling
+broadly rather than any one parametric family. Second, at moderate tails ($\nu{=}5$) the
+three are statistically indistinguishable ($0.85$ to $0.87$; the fused NIG is nominally
+best). Third, at the heaviest tails ($\nu{=}3$) the ranking tracks tail shape: the
+Student-$t$, whose polynomial tails match the data, leads, while NIG's lighter
+(exponentially-tempered) tails at a fixed $\alpha$ trail in the independent fit ($0.637$)
+and largely recover under fusion ($0.691$), with pseudo-Huber in between. We therefore
+keep the Student-$t$ as the headline: it is a proper likelihood (enabling the held-out
+comparisons of \S\ref{sec:application}), its power-law tails match returns, and it is
+best or tied-best under the heaviest tails. The broader point is that the methodological
+advantage is a robustness effect shared across heavy-tailed losses, not an artifact of
+the Student-$t$ form.
 
 \end{document}
