@@ -5,7 +5,7 @@ series: a **fused multi-regime penalty** (the scientific object is the sparse ch
 graph `Δ = W^event − W^ordinary`) and a **Student-t likelihood**, solved by
 consensus ADMM with an exact closed-form fused-lasso proximal step. Application:
 cross-asset dependency structure around scheduled macro events (CPI/NFP/FOMC) 
-with a slight focus on crypto tokens and equities.
+with a slight focus on crypto tokens and equities. Read the full paper in paper/main.pdf.
 
 TTIC 31180 final project.
 
