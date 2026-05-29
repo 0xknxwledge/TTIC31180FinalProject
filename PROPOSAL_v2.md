@@ -120,15 +120,34 @@ Figures: `outputs/figures/{regime_heatmaps,change_network,structure_over_time}.p
 (`scripts/make_figures.py`). Reproduce via `scripts/run_real_panel.py` and
 `scripts/run_real_robustness.py`.
 
+### Baselines & sensitivity (2026-05-29)
+
+- **Null is robust** (`scripts/run_sensitivity.py`): no event type (FOMC/CPI/NFP)
+  and no window (±1h/2h/4h) rejects — every observed `‖Δ‖₁` ≤ its matched-null
+  mean (all p ≥ 0.52).
+- **vs SVAR (`W≡0`):** decisive — all DAG models beat it by ~4.4k nats (Student-t)
+  / ~7k (Gaussian) OOS.
+- **vs DYNOTEARS (`scripts/compare_baselines.py`):** split, stated honestly.
+  *Synthetic ground-truth recovery* — FR-tDBN beats the DYNOTEARS-equivalent
+  (smooth-L1 + Gaussian + independent) by **+0.12 to +0.23 change-W AUROC**,
+  dominated by the **exact-prox ADMM solver** (Student-t / fusion secondary).
+  *Real-data OOS predictive NLL* — FR-tDBN does **not** win; pooled Gaussian
+  DYNOTEARS is slightly better (~160–360 nats), as the thin event regime gives
+  fusion little to exploit out of sample. **The defensible claim is better
+  change-graph *recovery* (ground truth), not better held-out density.** Solver
+  is the analogue of Danaher et al. 2014's joint-graphical-lasso ADMM (`papers/`).
+- **Descriptive structure-over-time** (`scripts/explore_viz.py`): a persistent
+  dependency backbone (IEF→TLT rates, DXY→EUR dollar, QQQ→SPY equity, SLV→GLD
+  metals) with crypto links strengthening through 2025
+  (`outputs/figures/edge_persistence.png`, `top_edges_per_block.png`).
+
 ### What's next
 
-The global and edge-wise nulls both fail to reject, so the empirical null looks
-robust. Before the writeup, two cheap checks that could either reveal a subset
-signal or confirm robustness: **per-event-type** splits (FOMC at 14:00 ET is
-mid-session and may behave differently from pre-open CPI/NFP) and **event-window
-sensitivity** (±1h/±4h). Optional rigor: **λ/γ selection** (BIC / held-out LL).
-Then the **LaTeX writeup** — a methods paper whose empirical section reports an
-honest, carefully-controlled null. Task list in **`TODO.md`**.
+Broaden the synthetic benchmark (more samples / change-edge counts / regimes /
+seeds) to make the recovery claim maximally defensible, then the **LaTeX writeup**
+— a methods paper (exact-prox fused Student-t DBN, validated on ground-truth
+recovery) whose empirical section reports an honest, carefully-controlled null.
+Task list in **`TODO.md`**.
 
 ---
 

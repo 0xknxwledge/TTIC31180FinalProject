@@ -32,15 +32,23 @@ The dated log below is the full chronological history._
   regime heatmaps, change network, structure-over-time (`outputs/figures/`).
 - **86 tests pass.** Core formulation unchanged since the ADMM solver.
 
+## Baselines & sensitivity (done, 2026-05-29)
+- **Null robust** (`run_sensitivity.py`): no event type / window rejects (p≥0.52).
+- **vs SVAR**: decisive. **vs DYNOTEARS** (`compare_baselines.py`): FR-tDBN wins
+  synthetic *recovery* (+0.12–0.23 AUROC, mainly the exact-prox ADMM solver) but
+  not real-data OOS NLL (pooled Gaussian DYNOTEARS slightly better). Claim =
+  better Δ-*recovery*, not predictive density.
+- **Time-resolved viz** (`explore_viz.py`): persistence heatmap + per-block edges
+  (`outputs/figures/`).
+
 ## Next — toward "finished" + LaTeX
-1. **Per-event-type / window sensitivity** (cheap): FOMC (14:00 ET, mid-session)
-   vs pre-open CPI/NFP; window ±1h/±4h. Either reveals a subset signal or confirms
-   the null is robust.
+1. **Broaden the synthetic benchmark** to make the recovery win maximally
+   defensible: more samples (larger n), change-edge counts incl. a 0-change null
+   control, more seeds (tight CIs), ν∈{3,5,∞}. (Open: also vary #regimes K — the
+   exact-prox closed form is currently K=2 only, so K>2 needs a solver extension.)
 2. **(Optional rigor)** λ via BIC, γ via held-out LL.
-3. **LaTeX writeup** (NeurIPS, ≤8pp): method (the contribution) + synthetic
-   benchmark (slide-1) + real-data application reporting the honest, controlled
-   null + ablations + limitations. The methods + OOS/heavy-tail results stand
-   regardless of the empirical null.
+3. **LaTeX writeup** (NeurIPS, ≤8pp): method + synthetic benchmark (slide-1) +
+   real-data application reporting the honest controlled null + ablations + limits.
 
 ## Guiding MVP
 
