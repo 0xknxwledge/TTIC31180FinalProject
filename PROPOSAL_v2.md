@@ -86,10 +86,40 @@ design spec is `docs/superpowers/specs/2026-05-28-admm-fused-fr-tdbn-design.md`.
   even for uniform fusion (F1 ≈ 0.22, precision ≈ 0.17); ranking (AUROC) is the
   honest lens, motivating **stability selection** over single-fit support on real data.
 
+### First real-data results (2026-05-29) — mixed, reported honestly
+
+Panel: **d=23**, 2,962 hourly bars, 2024-05 → 2026-05 (Yahoo, UTC), 104 event-regime
+bars (3.6%); event labels from a verified CPI/NFP/FOMC calendar (`data/events.csv`).
+
+- **OOS `W≡0` gate — passes decisively.** On a held-out test split (train-derived
+  scales), the contemporaneous DAG beats the `W≡0` SVAR: Gaussian Δ test-NLL
+  −7,048, Student-t −4,448. So the hourly contemporaneous DAG genuinely carries
+  the dependency structure (and Student-t < Gaussian NLL — heavy tails confirmed
+  on real data). Read as explanatory power of the joint structure, not forecasting.
+- **Bootstrap stability — the stable change edges are on-thesis.** Across 25 block
+  bootstraps, the most stable `Δ_W` edges (freq 1.0) are crypto-internal and
+  cross-asset: ETH↔SOL/LINK/XRP, BTC↔XRP, BTC→VIX, NVDA→COIN, MSTR→SPY/QQQ,
+  DXY→JPY. The crypto block reliably reorganizes around macro events.
+- **Permutation null — does NOT reject (the sobering part).** Observed
+  `‖Δ_W‖₁ = 8.10` vs a vol/block-matched regime-label null (20 perms) mean 8.91
+  (p ≈ 0.81). So the *global magnitude* of change is **not** beyond what random
+  vol-matched relabeling produces. We cannot yet claim "structure changes more
+  around events than at matched random times."
+
+**Honest status:** the methods contribution (synthetic benchmark + ADMM solver)
+and the DAG/heavy-tail justification are solid; specific crypto change-edges are
+bootstrap-stable; but the headline *empirical* claim is **not yet supported** by
+the permutation null. `‖Δ‖₁` is likely a weak statistic (event windows are
+high-vol, so any matched relabeling yields large Δ). Reproduce via
+`scripts/run_real_panel.py` and `scripts/run_real_robustness.py`.
+
 ### What's next
 
-Empirical half: small complete crypto–macro panel (`d ≈ 15–20`) via Massive
-(formerly Polygon) + Alpaca + Binance (`ccxt`). Detailed task list in **`TODO.md`**.
+Investigate the null result (in rough priority): **edge-wise permutation test**
+(per-edge `Δ` vs its own null — far more powerful than the global `‖Δ‖₁`);
+**event-window sensitivity** (±1h/±4h) and **per-event-type** splits (CPI vs FOMC
+may not pool); **hyperparameter tuning** (λ via BIC, γ via held-out LL) for a
+crisper `Δ`. Then the writeup. Task list in **`TODO.md`**.
 
 ---
 

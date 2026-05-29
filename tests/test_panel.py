@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from frtdbn.data import build_return_panel
+from frtdbn.panel import assemble_regime_design
 
 
 def _frame(ts, closes):
@@ -33,6 +34,29 @@ def test_build_return_panel_aligns_subhour_offsets_to_hourly_grid():
     panel = build_return_panel({"EQ": a, "CR": b})
     assert len(panel) >= 2
     assert not panel.isna().any().any()
+
+
+def test_assemble_regime_design_produces_two_aligned_regimes():
+    rng = np.random.default_rng(0)
+    ts = pd.date_range("2025-01-02 14:00", periods=40, freq="h")
+    frames = {}
+    for sym in ["AAA", "BBB", "CCC"]:
+        prices = 100.0 * np.exp(np.cumsum(rng.normal(0, 0.01, size=40)))
+        frames[sym] = pd.DataFrame(
+            {"timestamp": ts, "open": prices, "high": prices, "low": prices,
+             "close": prices, "volume": 0.0}
+        )
+    events = pd.DataFrame({"event_time_utc": [pd.Timestamp("2025-01-03 12:00")]})
+
+    tbr, lbr, names, labels = assemble_regime_design(
+        frames, events, p=1, zscore_window=6, min_periods=3, event_window_h=2.0
+    )
+
+    assert names == ["AAA", "BBB", "CCC"]
+    assert len(tbr) == 2 and len(lbr) == 2
+    assert tbr[0].shape[1] == 3 and lbr[0][0].shape[1] == 3
+    assert labels.shape[0] == tbr[0].shape[0] + tbr[1].shape[0]  # all rows partitioned
+    assert tbr[1].shape[0] >= 1                                   # event regime non-empty
 
 
 def test_build_return_panel_keeps_only_common_grid():

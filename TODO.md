@@ -15,17 +15,26 @@ The dated log below is the full chronological history._
 - **Robustness/eval (done).** Out-of-sample `W≡0` ablation (`svar_vs_dag_oos`),
   full-density NLLs, time-ordered split, block-bootstrap stability selection,
   volatility-matched permutation null, restart stability, rolling past-only z-scores.
-- **Data (in progress).** Stooq hourly loader + coverage audit. Constraints found:
-  usable history **~2y (2024-05 → 2026-05)**, timestamps **not ET** (≈ CET/UTC),
-  `^vix` missing.
-- **62 tests pass.** Core formulation unchanged since the ADMM solver.
+- **Data + real-data fit (done).** Yahoo-sourced **d=23** panel (UTC, 2,962 bars,
+  2024-05 → 2026-05; `frtdbn/panel.py` assembles returns→z-score→lag→regime split).
+  Verified CPI/NFP/FOMC calendar (`data/events.csv`). Scripts: `run_real_panel.py`,
+  `run_real_robustness.py`. (Stooq dump kept as a cross-check; CNY=X/^TNX dropped.)
+- **First real-data results (mixed, honest):**
+  - **OOS `W≡0` gate passes** — DAG ≫ SVAR test-NLL (Gaussian −7048, Student-t
+    −4448); contemporaneous DAG justified, Student-t < Gaussian (heavy tails real).
+  - **Bootstrap-stable Δ edges are on-thesis** — crypto-internal + crypto-equity +
+    FX (ETH↔SOL/LINK/XRP, BTC→VIX, NVDA→COIN, MSTR→SPY/QQQ, DXY→JPY at freq 1.0).
+  - **Permutation null does NOT reject** — observed `‖Δ‖₁`=8.10 vs vol-matched null
+    mean 8.91 (p≈0.81). Global change magnitude is **not** beyond chance.
+- **77 tests pass.** Core formulation unchanged since the ADMM solver.
 
-## Next
-1. **Source hourly VIX** — trying Yahoo Finance; regroup if it fails.
-2. Build the crypto-macro panel loader: Stooq → tz-resolved hourly grid → log
-   returns → rolling z-score → event-CSV regime labels; `d≈12–15` from the audit.
-3. Run the OOS `W≡0` pre-check on the first real panel.
-4. Real-data eval via stability selection + permutation null (≥ 20 perms).
+## Next (investigate the null result)
+1. **Edge-wise permutation test** (per-edge `Δ` vs its own null) — far more powerful
+   than the global `‖Δ‖₁`, which is weak (event windows are high-vol).
+2. **Sensitivity:** event window ±1h/±4h; per-event-type splits (CPI vs FOMC).
+3. **Hyperparameter tuning:** λ via BIC, γ via held-out LL → crisper, sparser `Δ`.
+4. Then the writeup (the methods contribution + OOS/heavy-tail results stand
+   regardless of the empirical null).
 
 ## Guiding MVP
 
