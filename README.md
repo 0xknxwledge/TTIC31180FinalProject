@@ -2,53 +2,69 @@
 
 A method-paper extension of DYNOTEARS for **regime-structured, heavy-tailed** time
 series: a **fused multi-regime penalty** (the scientific object is the sparse change
-graph `Δ = W^event − W^ordinary`) plus a **Student-t likelihood**. Application:
+graph `Δ = W^event − W^ordinary`) and a **Student-t likelihood**, solved by
+consensus ADMM with an exact closed-form fused-lasso proximal step. Application:
 crypto–macro dependency structure around scheduled macro events (CPI/NFP/FOMC).
 TTIC 31180 final project.
 
-## Status
+## Status — analysis complete (88 tests passing)
 
-Methods validated on synthetic data; empirical (real-data) half in progress. See
-`PROPOSAL_v2.md` §0 for goals/results, `TODO.md` for current state + next steps,
-`DESIGN_DECISIONS.md` for the pre-implementation review, and
-`docs/superpowers/specs/` for the ADMM design spec. `python -m pytest tests -q` →
-62 passing.
+Docs live in **`docs/`**: `PROPOSAL.md` (method + results), `ROADMAP.md` (status +
+remaining), `DESIGN_DECISIONS.md` (pre-implementation review), `admm-spec.md`
+(solver design). What remains is the NeurIPS write-up.
 
-**Headline (synthetic, change-`W` AUROC, standardized so var-sortability = 0.50):**
-exact-prox ADMM ≫ smooth-L1 (~+0.13); Student-t > Gaussian (~+0.10); fusion helps
-the weaker estimator. Full tables in `PROPOSAL_v2.md` §0 / `outputs/headline_*`.
+**Synthetic (the contribution — ground-truth recovery).** On a var-sortability-honest
+benchmark (standardized → var-sortability = 0.50), across change-edges (0–5), sample
+size (50–200), and tail heaviness (ν 3–30), FR-tDBN recovers the change graph
+**+0.19–0.31 change-W AUROC** better than the DYNOTEARS-equivalent (smooth-L1 +
+Gaussian + independent), the gap widest under heavy tails. The exact-prox ADMM
+solver is the dominant lever; Student-t and fusion help secondarily; an adaptive-
+fusion variant is a documented **negative** ablation.
+
+**Real data (d = 23 Yahoo hourly panel, 2024-05 → 2026-05).** The contemporaneous
+DAG is justified (out-of-sample `W≡0` gate: DAG ≫ SVAR; Student-t < Gaussian NLL),
+but the empirical hypothesis is **not supported**: neither the contemporaneous
+(Δ_W) nor the lagged (Δ_A) structure changes around macro events beyond a
+volatility-matched null (global + edge-wise; robust across event type and
+±1/2/4h windows). Hourly cross-asset structure is overwhelmingly contemporaneous
+(lead-lag negligible beyond 1h ⇒ `p=1`). An honest, carefully-controlled null.
 
 ## Code map (`frtdbn/`)
 
 | module | role |
 |---|---|
-| `model.py` | FR-tDBN estimator (`FitConfig`, `FitResult`, `fit_fr_tdbn`): consensus-ADMM exact-prox solver + smooth-L1 baseline; Gaussian/Student-t loss; uniform/adaptive fusion; NOTEARS acyclicity |
+| `model.py` | FR-tDBN estimator (`FitConfig`, `fit_fr_tdbn`): consensus-ADMM exact-prox solver + smooth-L1 baseline; Gaussian/Student-t loss; uniform/adaptive fusion; NOTEARS acyclicity (K=2, arbitrary lag `p`) |
 | `prox.py` | closed-form K=2 fused-lasso prox (fuse-then-soft-threshold) |
 | `synthetic.py` | two-regime DBN generator: realistic sparse `Δ` (add/remove/reweight), imbalanced regime sizes |
-| `preprocess.py` | full-sample standardize, robust MAD scales, rolling past-only z-score, rank-Gaussianize |
+| `preprocess.py` | standardize, robust MAD scales, rolling past-only z-score, rank-Gaussianize |
 | `metrics.py` | var-sortability (Reisach), change scores, AUROC, returned-graph diagnostics |
-| `benchmark.py` | solver × loss × fusion grid + `summarize_grid` (mean ± se) |
+| `benchmark.py` | solver × loss × fusion × change-edge grid + `summarize_grid` (mean ± se) |
 | `evaluation.py` | full-density NLLs, `W≡0` SVAR baseline, out-of-sample `svar_vs_dag_oos` |
-| `robustness.py` | restarts + top-k Jaccard, block-bootstrap stability selection, vol-matched permutation null |
-| `splitting.py` | time-ordered train/test split, time-block indices |
-| `data.py` | ccxt OHLCV fetch/cache; Stooq hourly loader + coverage audit; return panel |
-
-## Scripts
-
-- `scripts/run_synthetic_benchmark.py` — main synthetic benchmark (grid, mean ± se).
-- `scripts/run_synthetic_smoke.py` — quick single-fit sanity check.
-- `scripts/audit_data_coverage.py` — Stooq hourly coverage/timezone audit.
-- `scripts/fetch_crypto_smoke.py` — ccxt crypto fetch smoke.
+| `robustness.py` | bootstrap stability, vol-matched permutation null + edge-wise + BH (Δ_W or Δ_A) |
+| `splitting.py` | time-ordered train/test split, regime partition, time blocks |
+| `data.py` | Yahoo hourly fetch + return panel (legacy: ccxt / Stooq loaders) |
+| `panel.py` | `DEFAULT_PANEL` (d=23) + assemble returns → z-score → lag → regime design |
+| `events.py` | event-calendar loader (ET→UTC) + regime labeling |
+| `viz.py` | regime heatmaps, change network, structure-over-time |
 
 ## Running
 
 ```bash
-python -m pytest tests -q                                   # tests
-python scripts/run_synthetic_benchmark.py --d 12 --n 50 100 --seeds 0 1 2
-python scripts/audit_data_coverage.py --symbols spy qqq tlt ief gld btc.v eth.v
+python -m pytest tests -q                                  # tests
+python scripts/fetch_yahoo_hourly.py --symbols SPY QQQ ... # fetch panel (needs network)
+python scripts/run_synthetic_sweep.py                      # synthetic recovery sweep + figure
+python scripts/run_real_panel.py                           # OOS W=0 gate + first fit
+python scripts/run_real_robustness.py --n-edgewise 100     # stability + permutation/edge-wise null
+python scripts/make_figures.py                             # paper figures
 ```
+
+Other scripts: `run_lag_selection.py`, `run_lagged_analysis.py`, `run_sensitivity.py`,
+`compare_baselines.py`, `explore_viz.py`, `run_synthetic_benchmark.py`.
+Figures land in `outputs/figures/`.
 
 ## Data
 
-Hourly OHLCV from Yahoo Finance (`scripts/fetch_yahoo_hourly.py`), cached locally
-under `data/raw/` (gitignored; re-downloadable). Usable span ~2024-05 → 2026-05.
+Hourly OHLCV from Yahoo Finance (`scripts/fetch_yahoo_hourly.py`, via `yfinance` +
+`curl_cffi`), cached under `data/raw/` (gitignored; re-downloadable). Usable common
+window ~2024-05 → 2026-05. The d=23 panel is `frtdbn.panel.DEFAULT_PANEL`; the
+verified macro event calendar is `data/events.csv`.

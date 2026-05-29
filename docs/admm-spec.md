@@ -1,7 +1,8 @@
 # Spec: ADMM solver with exact fused-lasso prox for FR-tDBN (Option C)
 
-**Date:** 2026-05-28 · **Status:** approved design, implementation starting ·
-**Companion:** `DESIGN_DECISIONS.md`, `PROPOSAL_v2.md`
+**Date:** 2026-05-28 · **Status:** implemented (`frtdbn/{model,prox}.py`) — this is
+the original design spec; see `PROPOSAL.md` §2 for the as-built summary ·
+**Companion:** `DESIGN_DECISIONS.md`, `PROPOSAL.md`, `ROADMAP.md`
 
 ## 1. Goal
 

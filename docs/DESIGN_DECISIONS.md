@@ -1,8 +1,9 @@
 # Design Decisions & Review Notes
 
-Living record of the pre-implementation review of `PROPOSAL_v2.md` + `TODO.md`,
-the decisions made, and the prioritized fix queue. Companion to `TODO.md`
-(phase plan) and `PROPOSAL_v2.md` (the method/empirical spec).
+Pre-implementation review (2026-05-28) of the original proposal — the critique,
+the locked decisions, and the prioritized fix queue. Companion to `PROPOSAL.md`
+(method + results) and `ROADMAP.md` (status). **How each item actually resolved is
+recorded at the end (§ Resolution).**
 
 ## Locked decisions (2026-05-28)
 
@@ -33,8 +34,8 @@ the decisions made, and the prioritized fix queue. Companion to `TODO.md`
   natural index order *is* a valid topological order and marginal variance grows
   monotonically down the order — the textbook Reisach et al. (2021)
   var-sortability setup, where NOTEARS looks good *for the wrong reason*. The
-  benchmark also never standardizes, while the real pipeline (`PROPOSAL_v2.md`
-  §3.5) z-scores → the synthetic "win" may not transfer.
+  benchmark also never standardizes, while the real pipeline z-scores → the
+  synthetic "win" may not transfer.
   Fixes: (1) a `var_sortability` diagnostic to *measure and report* the score;
   (2) standardize the design before fitting so the score sits at ~0.5 and the
   method cannot ride the variance gradient; (3) consistent random node-relabel as
@@ -86,3 +87,25 @@ the decisions made, and the prioritized fix queue. Companion to `TODO.md`
 Reframing to a method paper, the fused penalty matched to sparse event windows,
 the synthetic benchmark as core, and §10's self-critique (under-specified
 objective, optimistic universe, compute ceiling) are all sound.
+
+## Resolution (2026-05-29)
+
+**Locked decisions:** (1) built the small complete panel — **d=23** (not crypto-only).
+(2) Grade lives in the novel contribution; **HRP dropped**. (3) Data source **pivoted
+to Yahoo Finance** (clean UTC, hourly); Massive/Alpaca/Binance not needed, FRED-daily
+concern moot. (4) Laptop CPU sufficed — d=23 with ≤100-permutation nulls fit a sane
+budget; no GPU used.
+
+**Fix queue:**
+- **P0-A var-sortability** — done (`metrics.var_sortability`, `preprocess.standardize_columns`; benchmark pinned at 0.50).
+- **P0-B 2×2 grid** — done (`FitConfig.loss` switch; solver × loss × fusion grid + sweep).
+- **P1-C identifiability** — reframed to a recovery/robustness claim (not LiNGAM); borne out by the synthetic recovery results.
+- **P1-D NLL constants** — done (`evaluation.full_nll`, full density).
+- **P1-E pooled scales** — partially: held-out numbers use train-derived scales; per-regime-scale sensitivity not pursued (event regime too small to re-estimate).
+- **P1-F broaden Δ** — done (add/remove/reweight, realized-diff masks, imbalanced `n_event`).
+- **P2-G permutation null** — done (block- + volatility-matched; global **and** edge-wise, on Δ_W and Δ_A).
+- **P2-H penalty scaling** — penalties on a per-observation scale; returned graphs are near-acyclic (h≈1e-3) but not hard-projected to exact DAGs.
+- **P2-I non-stationarity** — the ~2y window reduces the risk; `time_block_indices` used for the structure-over-time figures.
+- **P2-J event timing** — 08:30-ET CPI/NFP precede the RTH open, so the window captures the post-open reaction (futures not used); FOMC 14:00 ET is mid-session.
+- **P2-K frequency pre-check** — done: the OOS `W≡0` gate shows DAG ≫ SVAR (W carries weight), and lead-lag is negligible beyond 1h ⇒ `p=1`.
+- **P2-L naming** — adopted: "DYNOTEARS-equivalent (our smooth-L1 + Gaussian + independent implementation)."

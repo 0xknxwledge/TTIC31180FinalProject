@@ -4,9 +4,10 @@
 
 This supersedes `BeecherJohn_TTIC31180_ProjectProposal.pdf`. The contribution lives
 on the **structure-learning** side (a method paper with a financial application);
-HRP is at most a one-figure illustration. This document is kept current with
-progress; the canonical remaining-work list is `TODO.md`, and the original ADMM
-design spec is `docs/superpowers/specs/2026-05-28-admm-fused-fr-tdbn-design.md`.
+the HRP idea was dropped. Companion docs (all in `docs/`): `ROADMAP.md` (status +
+remaining work), `DESIGN_DECISIONS.md` (pre-implementation review + how each item
+resolved), `admm-spec.md` (detailed solver design). **The code is the source of
+truth; this document is reconciled to it (2026-05-29).**
 
 ---
 
@@ -41,13 +42,12 @@ design spec is `docs/superpowers/specs/2026-05-28-admm-fused-fr-tdbn-design.md`.
   **out-of-sample `W≡0` SVAR ablation** (`svar_vs_dag_oos`); block-bootstrap
   stability selection; volatility-matched permutation null; restart stability;
   rolling past-only z-scores + rank-Gaussianize for real data.
-- **Data coverage audit** (`frtdbn/data.py` + `scripts/audit_data_coverage.py`):
-  Stooq hourly loader/auditor. Finding: usable hourly history is **~2 years
-  (2024-05 → 2026-05)**, not 5, and Stooq timestamps are **not ET** (≈ CET/UTC) —
-  both must shape the real panel. `^vix` absent (needs a proxy / different source).
-- **62 tests pass** (`python -m pytest tests -q`). The core formulation (§2) is
-  unchanged since the ADMM solver landed; this round added evaluation/robustness
-  methodology and the data audit, not new model results.
+- **Real data pipeline + analysis** (`frtdbn/{data,panel,events}.py`, `scripts/`):
+  a **d = 23 Yahoo Finance hourly panel** (2024-05 → 2026-05, UTC), verified
+  CPI/NFP/FOMC event calendar, OOS `W≡0` ablation, stability selection,
+  global + edge-wise permutation nulls (on Δ_W **and** Δ_A), sensitivity,
+  baselines, and time-resolved visualizations — see §4–5.
+- **88 tests pass** (`python -m pytest tests -q`).
 
 ### Headline results (synthetic, change-`W` AUROC, mean (se) over 24 fits/cell, standardized so var-sortability = 0.50)
 
@@ -167,11 +167,10 @@ a clean null control (Δ floor ≈ 0.27). Figure:
 
 ### What's next
 
-Broaden the synthetic benchmark (more samples / change-edge counts / regimes /
-seeds) to make the recovery claim maximally defensible, then the **LaTeX writeup**
-— a methods paper (exact-prox fused Student-t DBN, validated on ground-truth
-recovery) whose empirical section reports an honest, carefully-controlled null.
-Task list in **`TODO.md`**.
+The analysis is complete — synthetic recovery is defended across the design space,
+and the real-data empirical question is answered with a robust, controlled null.
+What remains is the **NeurIPS write-up** (≤ 8 pp) and optional rigor (BIC/held-out
+λ,γ selection; a rank-transform robustness column). See `ROADMAP.md`.
 
 ---
 
@@ -314,77 +313,87 @@ gradient and the synthetic result transfers to the standardized real pipeline.
 reporting change-edge AUROC for `W` and `A`, var-sortability (raw and fitted),
 `max_h`, and runtime; `summarize_grid` aggregates to mean ± se. Results: §0.
 
-## 4. Data design (forward plan)
+## 4. Data (as built)
 
-### 4.1 Universe — start small and complete
+Hourly OHLCV from **Yahoo Finance** (`scripts/fetch_yahoo_hourly.py`, via
+`yfinance` + a `curl_cffi` browser session to clear Yahoo's rate limiter), cached
+under `data/raw/yahoo/` (gitignored). Yahoo gives clean **UTC** timestamps and
+~2.8y of hourly history; the usable common window after alignment is
+**2024-05-30 → 2026-05-28** (bounded by the crypto series' start). An earlier Stooq
+hourly dump was explored but abandoned — ambiguous CET/UTC timestamps and no spot
+VIX (the Stooq loader/audit in `frtdbn/data.py` + `scripts/audit_data_coverage.py`
+remain as a cross-check).
 
-The first real panel is a **small but complete crypto–macro panel** (`d ≈ 15–20`),
-because the spillover claim *requires* macro assets — they are constitutive, not a
-later expansion. Candidate: a few liquid crypto perps (BTC, ETH, SOL, …) + equity
-index proxies (SPY/QQQ or ES/NQ) + rates proxies (TLT/IEF/SHY or ZN/ZB) + DXY +
-GLD + VIX. The larger `d ≈ 89` universe in v1 (single-name tech, sector ETFs,
-late-listing alts like ARB/SUI/WIF) is a stretch only after the small panel works.
+### 4.1 Panel (`frtdbn.panel.DEFAULT_PANEL`, d = 23)
 
-### 4.2 Sampling and macro alignment
+| block | members |
+|---|---|
+| equity / crypto-equity | SPY, QQQ, IWM, NVDA, COIN, MSTR |
+| rates / credit | TLT, IEF, SHY, HYG |
+| commodities | GLD, SLV, USO |
+| FX | DX-Y.NYB (DXY), EURUSD=X, GBPUSD=X, JPY=X |
+| vol | ^VIX |
+| crypto (spot) | BTC, ETH, SOL, XRP, LINK (-USD) |
 
-- **Hourly bars** as the primary frequency (≈ 8,200 RTH obs over 5y). Hourly makes
-  intra-slice `W` defensible and aligns with event resolution.
-- **CPI/NFP release at 08:30 ET, before cash-equity RTH.** Resolution: run the
-  event-window analysis on near-24h instruments (crypto + index/rate futures + FX)
-  so the reaction is actually captured, rather than only post-open bars.
-- **Rates at hourly resolution need ETF/futures proxies — FRED yields are
-  daily-only** and unusable here.
-- Standardize per variable with **rolling, past-only z-scores** (avoids look-ahead
-  and preserves the event-window variance shifts); report a rank (Gaussian-copula)
-  variant as a robustness check.
+Dropped after auditing coverage: **CNY=X** (sparse during US RTH — halved the
+common grid), **^TNX** (redundant with IEF; its :20 stamp trimmed the grid),
+**IBIT** (redundant with BTC-USD).
 
-### 4.3 History and events
+### 4.2 Panel construction (`frtdbn/{data,panel}.py`)
 
-A coverage audit of the local Stooq hourly dump (`scripts/audit_data_coverage.py`)
-shows usable history of **~2 years (2024-05 → 2026-05)** for the candidate panel —
-not the 5 years originally planned (free Stooq hourly is short). That window holds
-≈ 24 CPI, 16 FOMC, 24 NFP (~64 events); with ±2h hourly windows the event regime is
-a few hundred observations — `n_event ≪ n_ordinary`, the borrow-strength regime the
-fusion penalty targets. A 2-year window also *reduces* the non-stationarity risk; we
-still report per-sub-period Δ stability (`time_block_indices`). For a 5-year version,
-supplement Stooq with Massive/Alpaca. **Timezone:** Stooq timestamps are not ET (ETF
-bars fall at hours 15–22, consistent with CET/UTC), so the tz must be resolved before
-aligning the 08:30-ET releases.
+1. `build_return_panel`: per-symbol close → **floor each timestamp to the hour**
+   (Yahoo stamps equities at :30, crypto/FX/VIX at :00) → align on the union grid
+   → **log returns** → drop rows with any missing return. Drop-any-NaN restricts
+   to the common trading grid (equity RTH, where 24/7 crypto is also active):
+   **2,962 hourly bars, ~6/day, 499 trading days, zero NaNs**.
+2. `build_lagged_design`: **rolling past-only z-score** (window 250, min-periods
+   60; no look-ahead) → drop warmup → lagged design at **p = 1**. Lag order is
+   justified empirically (§0): lead-lag beyond 1 hour is negligible.
 
-### 4.4 Acyclicity sanity check
+### 4.3 Event regime
 
-Ablation with `W ≡ 0` (pure structural VAR). If held-out predictive likelihood
-barely changes, contemporaneous DAG claims are weak at hourly frequency — flag
-honestly. Worth running early on a tiny panel before committing the pipeline.
+`data/events.csv` holds CPI / NFP / FOMC release dates in ET (08:30 for CPI/NFP,
+14:00 for FOMC statements), **verified against the official BLS/Fed schedules**
+(incl. the 2025 lapse-driven exceptions: Sep-25 CPI on 10-24, Oct-25 CPI canceled,
+Nov-25 CPI on 12-18, Jan-26 CPI on 02-13). `load_event_calendar` converts ET→UTC
+(DST-aware via `America/New_York`); `label_event_regime` tags bars within **±2h** of
+a release → **104 event bars (3.6%)** — the small-`n_event` borrow-strength regime
+the fusion targets. Caveat: 08:30-ET CPI/NFP precede the cash open, so on the RTH
+panel their window captures the **post-open reaction**; FOMC (14:00 ET) is
+mid-session and captured directly.
 
-## 5. Real-data evaluation (forward plan)
+## 5. Evaluation protocol (executed; numbers in §0)
 
-No ground-truth DAG, so (helpers in `frtdbn/{evaluation,robustness,splitting}.py`):
-- **Time-ordered train/test split** (`train_test_split_regimes`): train
-  2024-05→2025-12, test 2026-01→2026-05 (~80/20). All held-out numbers use the
-  test split with **train-derived** scales (no leakage).
-- **Out-of-sample full-density NLL** (`full_nll`, with the `Γ` / `½log(νπ)`
-  constants) for valid t-vs-Gaussian and FR-tDBN-vs-`W≡0` comparison. The `W≡0`
-  SVAR ablation runs through `svar_vs_dag_oos` — only an *out-of-sample* win
-  counts as evidence the contemporaneous DAG carries weight (an in-sample
-  comparison favors the DAG mechanically, since it has strictly more parameters).
-- **Stability selection** via block bootstrap (`stability_selection`); report `Δ`
-  edge frequencies; headline = edges surviving > 70%. This is the reliable lens
-  given the §0 finding that single-fit support is hard at small event-`n`.
-- **Permutation null on regime labels** (`permutation_null_delta_norm`), block-
-  and volatility-matched (event windows are mechanically high-volatility, so a
-  naive relabel rejects trivially); ≥ 20 (ideally 100) permutations for usable
-  p-value resolution.
-- **Restart stability** (`fit_restarts` / top-k Δ Jaccard) and per-sub-period Δ
-  stability (`time_block_indices`).
-- **Community shift** (Louvain on `|W^k|`) and the optional **HRP** figure remain
-  secondary / dessert.
+No ground-truth DAG on real data, so (helpers in `frtdbn/{evaluation,robustness,
+splitting}.py`):
+
+- **Time-ordered train/test split** (`train_test_split_regimes`, last 20% = test),
+  with **train-derived scales** for every held-out number (no leakage).
+- **Out-of-sample full-density NLL** (`full_nll`, `Γ`/`½log(νπ)` constants
+  included) for valid t-vs-Gaussian and DAG-vs-`W≡0` comparison. The `W≡0` SVAR
+  ablation (`svar_vs_dag_oos`) is the frequency/acyclicity sanity — only an
+  out-of-sample win counts, since the DAG has strictly more parameters. **Result:
+  DAG ≫ SVAR** (§0); this also serves as the hourly "is W meaningful" check.
+- **Stability selection** via block bootstrap (`stability_selection`) — Δ edge
+  frequencies (the reliable lens given low single-fit precision at small event-`n`).
+- **Global + edge-wise permutation null** on Δ_W **and** Δ_A
+  (`permutation_null_delta_norm`, `edgewise_permutation_test`, `delta="W"|"A"`),
+  block- and **volatility-matched** (event windows are mechanically high-vol).
+  **Result: null** at both global and edge-wise level, for W and A (§0).
+- **Sensitivity** (`scripts/run_sensitivity.py`): per-event-type (FOMC/CPI/NFP)
+  and ±1/2/4h windows — null robust everywhere. **Lag-order selection**
+  (`run_lag_selection.py`). **Baselines** vs SVAR and DYNOTEARS-per-regime/pooled
+  (`compare_baselines.py`).
+- **Time-resolved visualizations** (`make_figures.py`, `explore_viz.py`,
+  `run_lagged_analysis.py`): regime heatmaps, change network, structure-over-time,
+  edge persistence (W and lag-1 A).
+- Community detection (Louvain) and the HRP "dessert" were **not** pursued.
 
 ## 6. Remaining work
 
-See **`TODO.md`** for the live task list. Near-term: lock Option C as the headline
-(optional clean slide-1 figure + γ_A decoupling for the minor A-fusion wrinkle),
-then build the crypto–macro data pipeline.
+The analysis is complete; what remains is the **NeurIPS write-up (≤ 8 pp)** and
+optional rigor (BIC/held-out λ,γ selection; a rank-transform robustness column).
+See `ROADMAP.md`.
 
 ## References
 
