@@ -41,7 +41,8 @@ from frtdbn.viz import top_edges  # noqa: E402
 
 FIGDIR = Path("outputs/figures")
 N_BLOCKS = 8           # ~2-month blocks over the ~2-year panel
-TOP_K_PER_BLOCK = 8    # edges used per block for the union / per-block graphs
+TOP_K_PER_BLOCK = 12   # edges used per block for the union / per-block graphs
+P = 1                  # lag order (lag-1 lead-lag is the only one carrying weight)
 
 
 # --- single-W block fit (duplicate-as-2-regimes, gamma=0) ---------------------
@@ -54,23 +55,27 @@ def _block_config() -> FitConfig:
     )
 
 
-def fit_block_W(target: np.ndarray, lags: list[np.ndarray], idx: np.ndarray) -> np.ndarray:
-    """Fit one contemporaneous W on the rows `idx` of the panel."""
+def fit_block(target: np.ndarray, lags: list[np.ndarray], idx: np.ndarray):
+    """Fit one block on rows `idx`; return (contemporaneous W, lag-1 A)."""
 
     tb, lb = target[idx], [lag[idx] for lag in lags]
     fb = fit_fr_tdbn([tb, tb], [lb, lb], _block_config())
-    return fb.W[0]
+    d = target.shape[1]
+    A1 = np.asarray(fb.A[0]).reshape(P, d, d)[0]   # lag-1 lead-lag matrix
+    return fb.W[0], A1
 
 
 def fit_blocks(target, lags, ts, n_blocks: int):
-    """Return (W_blocks, block_labels) for `n_blocks` contiguous time blocks."""
+    """Return (W_blocks, A_blocks, block_labels) for `n_blocks` time blocks."""
 
-    W_blocks, labels = [], []
+    W_blocks, A_blocks, labels = [], [], []
     for idx in time_block_indices(target.shape[0], n_blocks):
-        W_blocks.append(fit_block_W(target, lags, idx))
+        W, A1 = fit_block(target, lags, idx)
+        W_blocks.append(W)
+        A_blocks.append(A1)
         a, b = pd.Timestamp(ts[idx[0]]).date(), pd.Timestamp(ts[idx[-1]]).date()
         labels.append(f"{a}\n..{b}")
-    return W_blocks, labels
+    return W_blocks, A_blocks, labels
 
 
 # --- figure 1: edge-persistence heatmap --------------------------------------
@@ -97,7 +102,9 @@ def plot_edge_persistence(W_blocks, block_labels, names, path, top_k: int) -> No
     persistence = np.abs(M).mean(axis=1)          # mean |weight| across blocks
     order = np.argsort(-persistence)              # most persistent at top
     M, edges = M[order], [edges[i] for i in order]
-    row_labels = [f"{names[j]} -> {names[i]}" for (i, j) in edges]  # j drives i
+    # W[i, j] is the directed edge i -> j (column j = structural equation for j),
+    # matching frtdbn.viz.top_edges, so the node-link and heatmap figures agree.
+    row_labels = [f"{names[i]} -> {names[j]}" for (i, j) in edges]
 
     lim = float(np.abs(M).max()) or 1.0
     fig, ax = plt.subplots(figsize=(1.15 * len(W_blocks) + 4, 0.30 * len(edges) + 2.5))
@@ -112,7 +119,7 @@ def plot_edge_persistence(W_blocks, block_labels, names, path, top_k: int) -> No
         f"(rows = union of each block's top-{top_k} edges, sorted by mean |weight|)",
         fontsize=10,
     )
-    fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02, label="W weight (j -> i)")
+    fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02, label="signed W weight (i -> j)")
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -120,7 +127,8 @@ def plot_edge_persistence(W_blocks, block_labels, names, path, top_k: int) -> No
 
 # --- figure 2: per-block top-edge node-link grid -----------------------------
 
-def plot_top_edges_per_block(W_blocks, block_labels, names, path, top_k: int) -> None:
+def plot_top_edges_per_block(W_blocks, block_labels, names, path, top_k: int,
+                             suptitle: str | None = None) -> None:
     """One circular node-link diagram per block of its top-k edges.
 
     Shared node layout + shared edge-width scale across panels, so the reader
@@ -136,7 +144,7 @@ def plot_top_edges_per_block(W_blocks, block_labels, names, path, top_k: int) ->
     pos = nx.circular_layout(g_layout)
     wmax = max((abs(w) for W in W_blocks for _, _, w in top_edges(W, names, top_k)), default=1.0) or 1.0
 
-    fig, axes = plt.subplots(rows, cols, figsize=(4.6 * cols, 4.6 * rows), squeeze=False)
+    fig, axes = plt.subplots(rows, cols, figsize=(3.7 * cols, 3.7 * rows), squeeze=False)
     for idx, (W, label) in enumerate(zip(W_blocks, block_labels)):
         ax = axes[idx // cols][idx % cols]
         g = nx.DiGraph()
@@ -144,22 +152,22 @@ def plot_top_edges_per_block(W_blocks, block_labels, names, path, top_k: int) ->
         for src, dst, w in top_edges(W, names, top_k):
             g.add_edge(src, dst, weight=w)
         weights = [g[u][v]["weight"] for u, v in g.edges()]
-        nx.draw_networkx_nodes(g, pos, node_size=140, node_color="#e8e8e8",
-                               edgecolors="#999999", linewidths=0.4, ax=ax)
-        nx.draw_networkx_labels(g, pos, font_size=5.5, ax=ax)
+        nx.draw_networkx_nodes(g, pos, node_size=170, node_color="#e8e8e8",
+                               edgecolors="#999999", linewidths=0.5, ax=ax)
+        nx.draw_networkx_labels(g, pos, font_size=8.5, ax=ax)
         nx.draw_networkx_edges(
-            g, pos, ax=ax, arrowsize=7, connectionstyle="arc3,rad=0.08",
+            g, pos, ax=ax, arrowsize=9, connectionstyle="arc3,rad=0.08",
             edge_color=["#d62728" if w > 0 else "#1f77b4" for w in weights],
-            width=[0.6 + 3.5 * abs(w) / wmax for w in weights],
+            width=[0.8 + 4.0 * abs(w) / wmax for w in weights],
         )
-        ax.set_title(label.replace("\n", " "), fontsize=8)
+        ax.set_title(label.replace("\n", " "), fontsize=10)
         ax.axis("off")
     for idx in range(n, rows * cols):
         axes[idx // cols][idx % cols].axis("off")
     fig.suptitle(
-        f"Top-{top_k} contemporaneous edges per time block "
+        suptitle or f"Top-{top_k} contemporaneous edges per time block "
         f"(red = +, blue = -, width = |W|)",
-        fontsize=11,
+        fontsize=13,
     )
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
@@ -173,15 +181,21 @@ def main() -> None:
 
     print(f"panel: {target.shape[0]} rows x {len(names)} assets, "
           f"{pd.Timestamp(ts[0]).date()} .. {pd.Timestamp(ts[-1]).date()}")
-    print(f"fitting one W per block over {N_BLOCKS} blocks ...")
-    W_blocks, block_labels = fit_blocks(target, lags, ts, N_BLOCKS)
+    print(f"fitting W and lag-1 A per block over {N_BLOCKS} blocks ...")
+    W_blocks, A_blocks, block_labels = fit_blocks(target, lags, ts, N_BLOCKS)
 
     p1 = FIGDIR / "edge_persistence.png"
     p2 = FIGDIR / "top_edges_per_block.png"
+    p3 = FIGDIR / "top_lag1_edges_per_block.png"
     plot_edge_persistence(W_blocks, block_labels, names, p1, TOP_K_PER_BLOCK)
     plot_top_edges_per_block(W_blocks, block_labels, names, p2, TOP_K_PER_BLOCK)
-    print(f"wrote {p1}")
-    print(f"wrote {p2}")
+    plot_top_edges_per_block(
+        A_blocks, block_labels, names, p3, TOP_K_PER_BLOCK,
+        suptitle=f"Top-{TOP_K_PER_BLOCK} lag-1 lead-lag edges per time block "
+                 f"(i → 1h → j; red = +, blue = -, width = |A_1|)",
+    )
+    for p in (p1, p2, p3):
+        print(f"wrote {p}")
 
 
 if __name__ == "__main__":

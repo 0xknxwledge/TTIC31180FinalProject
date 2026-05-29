@@ -4,16 +4,21 @@ A method-paper extension of DYNOTEARS for **regime-structured, heavy-tailed** ti
 series: a **fused multi-regime penalty** (the scientific object is the sparse change
 graph `Δ = W^event − W^ordinary`) and a **Student-t likelihood**, solved by
 consensus ADMM with an exact closed-form fused-lasso proximal step. Application:
-crypto–macro dependency structure around scheduled macro events (CPI/NFP/FOMC).
+cross-asset dependency structure around scheduled macro events (CPI/NFP/FOMC) 
+with a slight focus on crypto tokens and equities.
+
 TTIC 31180 final project.
 
-## Status — analysis complete (100 tests passing)
+## Status — complete (paper written, 100 tests passing)
 
 Docs live in **`docs/`**: `PROPOSAL.md` (method + results), `ROADMAP.md` (status +
 remaining), `DESIGN_DECISIONS.md` (pre-implementation review), `admm-spec.md`
-(solver design). What remains is the NeurIPS write-up.
+(solver design). The write-up is in **`paper/`** (`main.tex` + `references.bib`,
+figures in `paper/figures/`, compiled `main.pdf`); rebuild with
+`cd paper && latexmk -pdf main.tex`. It uses the NeurIPS LaTeX style for formatting
+only (course project, not a submission — the conference notice is suppressed).
 
-**Synthetic (the contribution — ground-truth recovery).** On a var-sortability-honest
+**Synthetic (the contribution — ground-truth recovery).** On a var-sortability-controlled
 benchmark (standardized → var-sortability = 0.50), across change-edges (0–5), sample
 size (50–200), and tail heaviness (ν 3–30), FR-tDBN recovers the change graph
 **+0.19–0.31 change-W AUROC** better than the DYNOTEARS-equivalent (smooth-L1 +
@@ -31,8 +36,7 @@ volatility-matched null (global + edge-wise; robust across event type and
 ±1/2/4h windows). Hourly cross-asset structure is overwhelmingly contemporaneous
 (lead-lag negligible beyond 1h ⇒ `p=1`). Principled selection corroborates this:
 held-out likelihood drives the fusion penalty **γ→0** (BIC to a negligible 0.02) —
-data-driven selection finds no change-graph to encode. An honest, carefully-
-controlled null.
+data-driven selection finds no change-graph to encode. A carefully-controlled null.
 
 ## Code map (`frtdbn/`)
 

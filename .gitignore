@@ -16,7 +16,6 @@ __pycache__/
 .dist/
 
 # Data caches + large local inputs (regenerable / re-downloadable)
-data/raw/yahoo
 
 # Scratch benchmark outputs; committed results are outputs/headline_*.csv
 outputs/*.csv
