@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from frtdbn.data import build_return_panel
-from frtdbn.panel import assemble_regime_design
+from frtdbn.panel import assemble_regime_design, build_lagged_design
 
 
 def _frame(ts, closes):
@@ -57,6 +57,18 @@ def test_assemble_regime_design_produces_two_aligned_regimes():
     assert tbr[0].shape[1] == 3 and lbr[0][0].shape[1] == 3
     assert labels.shape[0] == tbr[0].shape[0] + tbr[1].shape[0]  # all rows partitioned
     assert tbr[1].shape[0] >= 1                                   # event regime non-empty
+
+
+def test_build_lagged_design_returns_aligned_timestamps():
+    rng = np.random.default_rng(1)
+    ts = pd.date_range("2025-01-02 14:00", periods=40, freq="h")
+    frames = {s: pd.DataFrame({"timestamp": ts, "open": 1.0, "high": 1.0, "low": 1.0,
+                               "close": 100.0 * np.exp(np.cumsum(rng.normal(0, 0.01, 40))), "volume": 0.0})
+              for s in ["AAA", "BBB"]}
+    target, lags, names, ts_target = build_lagged_design(frames, p=1, zscore_window=6, min_periods=3)
+    assert names == ["AAA", "BBB"]
+    assert len(ts_target) == target.shape[0]          # one timestamp per target row
+    assert lags[0].shape == target.shape
 
 
 def test_build_return_panel_keeps_only_common_grid():

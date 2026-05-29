@@ -169,6 +169,38 @@ def _assign_permuted_labels(
     return out
 
 
+def _permuted_deltas(
+    targets_by_regime: list[np.ndarray],
+    lags_by_regime: list[list[np.ndarray]],
+    config: FitConfig,
+    n_permutations: int,
+    seed: int,
+    volatility_match: bool,
+    n_vol_bins: int,
+    block_size: int | None,
+) -> list[np.ndarray]:
+    """Fit Delta_W under `n_permutations` vol/block-matched regime-label shuffles."""
+
+    if len(targets_by_regime) != 2:
+        raise NotImplementedError("Permutation null currently supports K=2.")
+    rng = np.random.default_rng(seed)
+    targets_all = np.concatenate(targets_by_regime, axis=0)
+    lags_all = [np.concatenate([lags_by_regime[0][lag], lags_by_regime[1][lag]], axis=0) for lag in range(config.p)]
+    labels = np.concatenate([
+        np.zeros(len(targets_by_regime[0]), dtype=int),
+        np.ones(len(targets_by_regime[1]), dtype=int),
+    ])
+    volatility = np.nanstd(targets_all, axis=1) if volatility_match else None
+    deltas: list[np.ndarray] = []
+    for _ in range(n_permutations):
+        perm = _assign_permuted_labels(labels, rng, volatility, n_vol_bins, block_size)
+        perm_targets = [targets_all[perm == k] for k in (0, 1)]
+        perm_lags = [[lag_mat[perm == k] for lag_mat in lags_all] for k in (0, 1)]
+        fit = fit_fr_tdbn(perm_targets, perm_lags, replace(config, seed=int(rng.integers(0, 1_000_000))))
+        deltas.append(np.asarray(fit.Delta_W).copy())
+    return deltas
+
+
 def permutation_null_delta_norm(
     targets_by_regime: list[np.ndarray],
     lags_by_regime: list[list[np.ndarray]],
@@ -181,21 +213,55 @@ def permutation_null_delta_norm(
 ) -> np.ndarray:
     """Permutation null for ||Delta_W||_1 with optional block/volatility matching."""
 
-    if len(targets_by_regime) != 2:
-        raise NotImplementedError("Permutation null currently supports K=2.")
-    rng = np.random.default_rng(seed)
-    targets_all = np.concatenate(targets_by_regime, axis=0)
-    lags_all = [np.concatenate([lags_by_regime[0][lag], lags_by_regime[1][lag]], axis=0) for lag in range(config.p)]
-    labels = np.concatenate([
-        np.zeros(len(targets_by_regime[0]), dtype=int),
-        np.ones(len(targets_by_regime[1]), dtype=int),
-    ])
-    volatility = np.nanstd(targets_all, axis=1) if volatility_match else None
-    norms = []
-    for _ in range(n_permutations):
-        perm = _assign_permuted_labels(labels, rng, volatility, n_vol_bins, block_size)
-        perm_targets = [targets_all[perm == k] for k in (0, 1)]
-        perm_lags = [[lag_mat[perm == k] for lag_mat in lags_all] for k in (0, 1)]
-        fit = fit_fr_tdbn(perm_targets, perm_lags, replace(config, seed=int(rng.integers(0, 1_000_000))))
-        norms.append(float(np.sum(np.abs(fit.Delta_W))))
-    return np.asarray(norms, dtype=float)
+    deltas = _permuted_deltas(targets_by_regime, lags_by_regime, config, n_permutations,
+                              seed, volatility_match, n_vol_bins, block_size)
+    return np.asarray([float(np.sum(np.abs(d))) for d in deltas], dtype=float)
+
+
+def edgewise_pvalues(observed_abs: np.ndarray, perm_abs_list: list[np.ndarray]) -> np.ndarray:
+    """Per-edge permutation p-value: P(|Delta_perm| >= |Delta_obs|), smoothed."""
+
+    obs = np.asarray(observed_abs, dtype=float)
+    counts = np.zeros_like(obs)
+    for perm in perm_abs_list:
+        counts += np.asarray(perm, dtype=float) >= obs
+    return (1.0 + counts) / (1.0 + len(perm_abs_list))
+
+
+def bh_rejected(pvalues: np.ndarray, alpha: float = 0.05) -> np.ndarray:
+    """Benjamini-Hochberg FDR rejection mask (same shape as `pvalues`)."""
+
+    p = np.asarray(pvalues, dtype=float)
+    flat = p.ravel()
+    m = flat.size
+    order = np.argsort(flat)
+    passed = flat[order] <= (np.arange(1, m + 1) / m) * alpha
+    rejected = np.zeros(m, dtype=bool)
+    if passed.any():
+        k_max = int(np.flatnonzero(passed).max())
+        rejected_sorted = np.zeros(m, dtype=bool)
+        rejected_sorted[: k_max + 1] = True
+        rejected[order] = rejected_sorted
+    return rejected.reshape(p.shape)
+
+
+def edgewise_permutation_test(
+    targets_by_regime: list[np.ndarray],
+    lags_by_regime: list[list[np.ndarray]],
+    config: FitConfig,
+    n_permutations: int = 100,
+    seed: int = 0,
+    volatility_match: bool = True,
+    n_vol_bins: int = 5,
+    block_size: int | None = None,
+) -> dict[str, np.ndarray]:
+    """Per-edge permutation test of Delta_W: which edges change beyond a matched null.
+
+    Far more powerful than the global ||Delta||_1 norm — it asks *where* the
+    structure changes, not just by how much in aggregate.
+    """
+
+    observed = np.abs(np.asarray(fit_fr_tdbn(targets_by_regime, lags_by_regime, config).Delta_W))
+    perm_abs = [np.abs(d) for d in _permuted_deltas(
+        targets_by_regime, lags_by_regime, config, n_permutations, seed, volatility_match, n_vol_bins, block_size)]
+    return {"observed_abs": observed, "pvalues": edgewise_pvalues(observed, perm_abs)}

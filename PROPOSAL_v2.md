@@ -100,26 +100,35 @@ bars (3.6%); event labels from a verified CPI/NFP/FOMC calendar (`data/events.cs
   bootstraps, the most stable `Δ_W` edges (freq 1.0) are crypto-internal and
   cross-asset: ETH↔SOL/LINK/XRP, BTC↔XRP, BTC→VIX, NVDA→COIN, MSTR→SPY/QQQ,
   DXY→JPY. The crypto block reliably reorganizes around macro events.
-- **Permutation null — does NOT reject (the sobering part).** Observed
-  `‖Δ_W‖₁ = 8.10` vs a vol/block-matched regime-label null (20 perms) mean 8.91
-  (p ≈ 0.81). So the *global magnitude* of change is **not** beyond what random
-  vol-matched relabeling produces. We cannot yet claim "structure changes more
-  around events than at matched random times."
+- **Permutation null — does NOT reject.** Observed `‖Δ_W‖₁ = 8.10` vs a
+  vol/block-matched regime-label null (20 perms) mean 8.91 (p ≈ 0.81). The
+  *global magnitude* of change is not beyond random vol-matched relabeling.
+- **Edge-wise permutation test — also null (and definitive).** Per-edge `|Δ|` vs
+  its own vol-matched null (100 perms): only **10** edges reach raw p<0.05 vs
+  **~25 expected by chance**, and **0 survive BH-FDR**. So the change is not
+  concentrated in specific edges either — the bootstrap-stable crypto edges are
+  *sampling*-stable but not *event*-specific.
 
 **Honest status:** the methods contribution (synthetic benchmark + ADMM solver)
-and the DAG/heavy-tail justification are solid; specific crypto change-edges are
-bootstrap-stable; but the headline *empirical* claim is **not yet supported** by
-the permutation null. `‖Δ‖₁` is likely a weak statistic (event windows are
-high-vol, so any matched relabeling yields large Δ). Reproduce via
-`scripts/run_real_panel.py` and `scripts/run_real_robustness.py`.
+and the DAG/heavy-tail justification are solid; but the empirical hypothesis —
+that scheduled macro events reorganize the conditional dependency structure — is
+**not supported** at either the global or edge-wise level, against a
+volatility-matched null. The defensible empirical statement is the *null* itself:
+events raise volatility (which the matched null absorbs) but do not measurably
+change the conditional dependency graph at hourly RTH frequency over this window.
+Figures: `outputs/figures/{regime_heatmaps,change_network,structure_over_time}.png`
+(`scripts/make_figures.py`). Reproduce via `scripts/run_real_panel.py` and
+`scripts/run_real_robustness.py`.
 
 ### What's next
 
-Investigate the null result (in rough priority): **edge-wise permutation test**
-(per-edge `Δ` vs its own null — far more powerful than the global `‖Δ‖₁`);
-**event-window sensitivity** (±1h/±4h) and **per-event-type** splits (CPI vs FOMC
-may not pool); **hyperparameter tuning** (λ via BIC, γ via held-out LL) for a
-crisper `Δ`. Then the writeup. Task list in **`TODO.md`**.
+The global and edge-wise nulls both fail to reject, so the empirical null looks
+robust. Before the writeup, two cheap checks that could either reveal a subset
+signal or confirm robustness: **per-event-type** splits (FOMC at 14:00 ET is
+mid-session and may behave differently from pre-open CPI/NFP) and **event-window
+sensitivity** (±1h/±4h). Optional rigor: **λ/γ selection** (BIC / held-out LL).
+Then the **LaTeX writeup** — a methods paper whose empirical section reports an
+honest, carefully-controlled null. Task list in **`TODO.md`**.
 
 ---
 

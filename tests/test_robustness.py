@@ -2,7 +2,10 @@ import numpy as np
 
 from frtdbn.model import FitConfig
 from frtdbn.robustness import (
+    bh_rejected,
     block_bootstrap_indices,
+    edgewise_permutation_test,
+    edgewise_pvalues,
     fit_restarts,
     permutation_null_delta_norm,
     resample_lagged_regimes,
@@ -48,6 +51,29 @@ def test_fit_restarts_and_summary_run():
 
     assert summary["n_restarts"] == 2.0
     assert 0.0 <= summary["top_k_jaccard"] <= 1.0
+
+
+def test_edgewise_pvalues_counts_exceedances():
+    obs = np.array([[5.0, 0.0]])
+    perms = [np.array([[1.0, 0.0]]), np.array([[2.0, 0.0]]), np.array([[6.0, 0.0]])]
+    p = edgewise_pvalues(obs, perms)
+    assert np.isclose(p[0, 0], (1 + 1) / (1 + 3))   # only the 6 >= 5
+    assert np.isclose(p[0, 1], (1 + 3) / (1 + 3))   # all 0 >= 0
+
+
+def test_bh_rejected_controls_fdr():
+    p = np.array([0.001, 0.008, 0.039, 0.041, 0.042, 0.06, 0.074, 0.205])
+    rej = bh_rejected(p, alpha=0.05)
+    assert rej.tolist() == [True, True, False, False, False, False, False, False]
+    assert bh_rejected(np.array([0.9, 0.8, 0.7]), alpha=0.05).tolist() == [False, False, False]
+
+
+def test_edgewise_permutation_test_smoke():
+    targets, lags = _tiny_data()
+    cfg = FitConfig(p=1, solver="admm", lbfgs_max_iter=2, outer_max_iter=1, seed=0)
+    res = edgewise_permutation_test(targets, lags, cfg, n_permutations=2, seed=0, block_size=4)
+    assert res["pvalues"].shape == (6, 6)
+    assert np.all((res["pvalues"] >= 0) & (res["pvalues"] <= 1))
 
 
 def test_stability_selection_and_permutation_null_smoke():

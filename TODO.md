@@ -24,17 +24,23 @@ The dated log below is the full chronological history._
     −4448); contemporaneous DAG justified, Student-t < Gaussian (heavy tails real).
   - **Bootstrap-stable Δ edges are on-thesis** — crypto-internal + crypto-equity +
     FX (ETH↔SOL/LINK/XRP, BTC→VIX, NVDA→COIN, MSTR→SPY/QQQ, DXY→JPY at freq 1.0).
-  - **Permutation null does NOT reject** — observed `‖Δ‖₁`=8.10 vs vol-matched null
-    mean 8.91 (p≈0.81). Global change magnitude is **not** beyond chance.
-- **77 tests pass.** Core formulation unchanged since the ADMM solver.
+  - **Permutation null does NOT reject** — global `‖Δ‖₁`=8.10 vs vol-matched null
+    mean 8.91 (p≈0.81); **edge-wise** test (100 perms) finds only 10 edges p<0.05
+    vs ~25 by chance, 0 surviving BH. The empirical event-change claim is **not
+    supported** — the defensible result is the null itself.
+- **Visualization (done).** `frtdbn/viz.py` + `scripts/make_figures.py` →
+  regime heatmaps, change network, structure-over-time (`outputs/figures/`).
+- **86 tests pass.** Core formulation unchanged since the ADMM solver.
 
-## Next (investigate the null result)
-1. **Edge-wise permutation test** (per-edge `Δ` vs its own null) — far more powerful
-   than the global `‖Δ‖₁`, which is weak (event windows are high-vol).
-2. **Sensitivity:** event window ±1h/±4h; per-event-type splits (CPI vs FOMC).
-3. **Hyperparameter tuning:** λ via BIC, γ via held-out LL → crisper, sparser `Δ`.
-4. Then the writeup (the methods contribution + OOS/heavy-tail results stand
-   regardless of the empirical null).
+## Next — toward "finished" + LaTeX
+1. **Per-event-type / window sensitivity** (cheap): FOMC (14:00 ET, mid-session)
+   vs pre-open CPI/NFP; window ±1h/±4h. Either reveals a subset signal or confirms
+   the null is robust.
+2. **(Optional rigor)** λ via BIC, γ via held-out LL.
+3. **LaTeX writeup** (NeurIPS, ≤8pp): method (the contribution) + synthetic
+   benchmark (slide-1) + real-data application reporting the honest, controlled
+   null + ablations + limitations. The methods + OOS/heavy-tail results stand
+   regardless of the empirical null.
 
 ## Guiding MVP
 
